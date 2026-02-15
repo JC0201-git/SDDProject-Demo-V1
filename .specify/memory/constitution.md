@@ -1,24 +1,24 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version Change: [UNVERSIONED] → 1.0.0
-Type: MAJOR (Initial constitution adoption)
+Version Change: 1.0.0 → 1.1.0
+Type: MINOR (New principle added)
 
-Modified Principles: N/A (Initial creation)
+Modified Principles: N/A
 Added Sections:
-  - Core Principles (4 principles: Data Consumption, State Management and Persistence, Component Architecture, Defensive Development and UI Resilience)
-  - Testing Standards
-  - Development Workflow
-  - Governance
+  - Core Principles: V. Documentation Language Standards (Traditional Chinese requirement)
 
 Removed Sections: N/A
 
 Templates Requiring Updates:
-  ✅ plan-template.md - Constitution Check section present, aligns with principles
-  ✅ spec-template.md - User stories and requirements structure supports principle validation
-  ✅ tasks-template.md - Task categorization supports principle-driven development
+  ✅ plan-template.md - No changes needed (language requirement is content-level, not structural)
+  ✅ spec-template.md - No changes needed (specs will be written in zh-TW per new principle)
+  ✅ tasks-template.md - No changes needed (tasks reference specs which will be in zh-TW)
 
-Follow-up TODOs: None
+Follow-up TODOs: 
+  - Ensure all future specifications are created in Traditional Chinese (zh-TW)
+  - Update any existing user-facing documentation to Traditional Chinese
+  - Add language validation to documentation review checklist
 -->
 
 # Demo-v1 Frontend Constitution
@@ -84,6 +84,19 @@ Follow-up TODOs: None
 
 **Rationale**: Professional user experience requires anticipating and handling failure modes. Users should never encounter blank screens, infinite spinners, or cryptic error messages. Defensive UI patterns maintain user trust even under adverse conditions.
 
+### V. Documentation Language Standards
+
+**Language requirements for project documentation:**
+
+- ALL specifications (spec.md files) MUST be written in Traditional Chinese (zh-TW)
+- ALL implementation plans (plan.md files) MUST be written in Traditional Chinese (zh-TW)
+- ALL user-facing documentation MUST be written in Traditional Chinese (zh-TW)
+- Code comments MAY be in English or Traditional Chinese at developer's discretion
+- Technical APIs, interfaces, and code identifiers MUST remain in English
+- Constitution, templates, and internal development tooling documentation remain in English
+
+**Rationale**: Ensuring consistent Traditional Chinese documentation improves accessibility for the target user base and stakeholders. This requirement maintains clear communication with end users, product managers, and non-technical team members while preserving standard English conventions for code-level artifacts and developer tooling.
+
 ## Testing Standards
 
 **Mandatory testing requirements:**
@@ -107,7 +120,7 @@ Follow-up TODOs: None
 - Breaking changes to shared components MUST be documented in migration guide
 
 ## Governance
-
+1
 This constitution supersedes all other frontend development practices. Any deviations from the principles outlined above MUST be justified during the architectural review phase and documented in the feature specification.
 
 **Amendment Process**:
