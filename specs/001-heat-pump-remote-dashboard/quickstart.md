@@ -1,1144 +1,798 @@
 # Quickstart: 熱泵遠端管理儀表板開發指南
 
-**Date**: 2026-02-17  
-**Phase**: 1 - Design & Contracts  
-**Target Audience**: 開發人員
+**功能分支**: `001-heat-pump-remote-dashboard`  
+**建立日期**: 2026年2月18日  
+**技術棧**: Node.js + Express + Socket.io + PostgreSQL + TimescaleDB + React 18  
+**目標對象**: 開發人員
 
-## Overview
+## 概述
 
 本指南提供熱泵遠端管理儀表板的開發環境設置、程式碼範例、測試指令及最佳實踐。遵循本指南可快速上手並貢獻程式碼。
 
+**技術決策參考**: [research.md](research.md) | **資料模型**: [data-model.md](data-model.md) | **API 規格**: [contracts/](contracts/)
+
 ---
 
-## Prerequisites
+## 系統需求
 
-### 系統需求
-
-| Component | Requirement |
-|-----------|-------------|
-| **OS** | macOS 12+, Ubuntu 20.04+, Windows 10+ (with WSL2) |
-| **Python** | 3.11+ |
-| **Node.js** | 18+ (for frontend) |
-| **PostgreSQL** | 15+ |
+| 元件 | 版本需求 |
+|-----|---------|
+| **OS** | macOS 12+, Ubuntu 20.04+, Windows 10+ (WSL2) |
+| **Node.js** | 18 LTS (18.19.0+) |
+| **PostgreSQL** | 15+ with TimescaleDB extension |
+| **Redis** | 7+ (Session 儲存) |
 | **Git** | 2.30+ |
-| **Docker** (Optional) | 20+ (for containerized development) |
-
-### 安裝必要工具
-
-```bash
-# macOS (Homebrew)
-brew install python@3.11 node@18 postgresql@15
-
-# Ubuntu
-sudo apt update
-sudo apt install python3.11 python3.11-venv nodejs npm postgresql-15
-
-# Windows (via WSL2)
-# Follow Ubuntu instructions above
-```
+| **Docker** (選用) | 20+ (容器化開發) |
 
 ---
 
-## Project Setup
+## 快速啟動 (5 分鐘)
 
-### 1. Clone Repository
+### 使用 Docker Compose (推薦)
 
 ```bash
+# 1. Clone 專案
 git clone https://github.com/your-org/Demo-v1.git
 cd Demo-v1
 git checkout 001-heat-pump-remote-dashboard
+
+# 2. 啟動所有服務 (PostgreSQL + TimescaleDB + Redis + Backend + Frontend)
+docker-compose up -d
+
+# 3. 初始化資料庫
+docker-compose exec backend npm run db:migrate
+docker-compose exec backend npm run db:seed
+
+# 4. 開啟瀏覽器
+open http://localhost:3000
+
+# 預設登入帳號: admin / Admin@123
 ```
 
-### 2. Backend Setup (FastAPI)
+**服務端口**:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- WebSocket: ws://localhost:8000/socket.io
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
 
-#### 2.1 創建虛擬環境
+---
 
+## 本地開發設置 (無 Docker)
+
+### 1. 安裝必要工具
+
+#### macOS (Homebrew)
 ```bash
-cd Demo-v1-api
-python3.11 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
-```
-
-#### 2.2 安裝相依套件
-
-創建 `requirements.txt`:
-
-```txt
-# requirements.txt
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.6.0
-pydantic-settings==2.1.0
-sqlalchemy==2.0.25
-asyncpg==0.29.0
-psycopg2-binary==2.9.9
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
-websockets==12.0
-redis==5.0.1
-pytest==7.4.3
-pytest-asyncio==0.23.3
-httpx==0.26.0
-pytest-cov==4.1.0
-```
-
-```bash
-pip install -r requirements.txt
-```
-
-#### 2.3 資料庫設置
-
-安裝 TimescaleDB:
-
-```bash
-# macOS
+brew install node@18 postgresql@15 redis
+brew tap timescale/tap
 brew install timescaledb
-timescaledb-tune
 
-# Ubuntu
-sudo add-apt-repository ppa:timescale/timescaledb-ppa
-sudo apt update
-sudo apt install timescaledb-2-postgresql-15
-sudo timescaledb-tune
+# 啟動服務
+brew services start postgresql@15
+brew services start redis
 ```
 
-創建資料庫:
+#### Ubuntu
+```bash
+# Node.js 18
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# PostgreSQL 15 + TimescaleDB
+sudo apt install gnupg postgresql-common apt-transport-https lsb-release wget
+sudo sh /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+echo "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main" | sudo tee /etc/apt/sources.list.d/timescaledb.list
+wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | sudo apt-key add -
+sudo apt update
+sudo apt install postgresql-15 timescaledb-2-postgresql-15
+
+# Redis
+sudo apt install redis-server
+
+# 啟動服務
+sudo systemctl start postgresql
+sudo systemctl start redis-server
+```
+
+### 2. 設定資料庫
 
 ```bash
-# 啟動 PostgreSQL
-brew services start postgresql@15  # macOS
-sudo systemctl start postgresql     # Ubuntu
-
-# 創建資料庫
+# 連線至 PostgreSQL
 psql postgres
-```
 
-```sql
--- In psql
+# 建立資料庫與使用者
 CREATE DATABASE heatpump_dashboard;
+CREATE USER heatpump_admin WITH ENCRYPTED PASSWORD 'your_secure_password';
+GRANT ALL PRIVILEGES ON DATABASE heatpump_dashboard TO heatpump_admin;
+
+# 啟用 TimescaleDB 擴展
 \c heatpump_dashboard
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 \q
 ```
 
-執行 schema migration:
+### 3. 後端設置 (Node.js + Express)
 
 ```bash
-# Copy schema from data-model.md
-psql heatpump_dashboard < schema.sql
+cd backend
+
+# 安裝相依套件
+npm install
+
+# 建立環境變數檔案
+cat > .env << EOF
+# Server
+NODE_ENV=development
+PORT=8000
+
+# Database
+DATABASE_URL=postgresql://heatpump_admin:your_secure_password@localhost:5432/heatpump_dashboard
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# JWT Secret
+JWT_SECRET=your_jwt_secret_key_change_in_production
+
+# Session
+SESSION_TIMEOUT_MS=1800000  # 30 minutes
+
+# WebSocket
+WEBSOCKET_HEARTBEAT_INTERVAL=15000  # 15 seconds
+WEBSOCKET_TIMEOUT=30000             # 30 seconds
+EOF
+
+# 執行資料庫遷移
+npm run db:migrate
+
+# 插入種子資料 (測試帳號與裝置)
+npm run db:seed
+
+# 啟動開發伺服器
+npm run dev
+
+# 後端應在 http://localhost:8000 運行
 ```
 
-創建 `.env` 檔案:
-
-```env
-# .env
-DATABASE_URL=postgresql://localhost:5432/heatpump_dashboard
-SECRET_KEY=your-secret-key-change-in-production
-REDIS_URL=redis://localhost:6379/0
-CORS_ORIGINS=http://localhost:3000
+**後端套件列表** (`backend/package.json`):
+```json
+{
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "pg": "^8.11.3",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "redis": "^4.6.5",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3"
+  }
+}
 ```
 
-#### 2.4 啟動開發伺服器
+### 4. 前端設置 (React 18)
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+cd frontend
+
+# 安裝相依套件
+npm install
+
+# 建立環境變數檔案
+cat > .env << EOF
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_WS_URL=ws://localhost:8000
+EOF
+
+# 啟動開發伺服器
+npm run dev
+
+# 前端應在 http://localhost:3000 運行
 ```
 
-驗證:
-```bash
-curl http://localhost:8000/docs
-# 應看到 FastAPI 自動產生的 OpenAPI 文檔
+**前端套件列表** (`frontend/package.json`):
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.1",
+    "@tanstack/react-query": "^5.17.9",
+    "socket.io-client": "^4.6.1",
+    "echarts": "^5.4.3",
+    "echarts-for-react": "^3.0.2",
+    "react-hook-form": "^7.49.2",
+    "bootstrap": "^5.3.2",
+    "rsuite": "^5.51.1",
+    "styled-components": "^6.1.8",
+    "i18next": "^23.7.11",
+    "react-i18next": "^14.0.0",
+    "axios": "^1.6.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.10",
+    "vitest": "^1.1.1",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^6.1.5",
+    "typescript": "^5.3.3"
+  }
+}
 ```
 
 ---
 
-### 3. Frontend Setup (React 16.13.1)
+## 目錄結構
 
-#### 3.1 安裝相依套件
+```
+Demo-v1/
+├── backend/                    # Node.js 後端
+│   ├── src/
+│   │   ├── models/             # 資料模型 (Sequelize/Prisma)
+│   │   │   ├── device.js
+│   │   │   ├── user.js
+│   │   │   └── ...
+│   │   ├── services/           # 業務邏輯層
+│   │   │   ├── device-service.js
+│   │   │   ├── realtime-service.js
+│   │   │   ├── control-service.js
+│   │   │   └── auth-service.js
+│   │   ├── api/
+│   │   │   ├── routes/         # API 路由
+│   │   │   │   ├── device.js
+│   │   │   │   ├── control.js
+│   │   │   │   └── auth.js
+│   │   │   ├── middleware/     # 中介軟體 (驗證、錯誤處理)
+│   │   │   └── validators/     # 請求驗證 schemas
+│   │   ├── websocket/          # Socket.io 事件處理
+│   │   │   └── device-events.js
+│   │   ├── db/
+│   │   │   ├── migrations/     # 資料庫遷移腳本
+│   │   │   └── seeds/          # 種子資料
+│   │   ├── config/
+│   │   │   ├── database.js
+│   │   │   └── server.js
+│   │   └── server.js           # 伺服器入口
+│   ├── tests/
+│   │   ├── unit/               # 單元測試 (Jest)
+│   │   └── integration/        # 整合測試 (Supertest)
+│   └── package.json
+│
+├── frontend/                   # React 前端
+│   ├── src/
+│   │   ├── components/         # 元件 (Presentational)
+│   │   │   ├── dashboard/
+│   │   │   ├── device/
+│   │   │   ├── control/
+│   │   │   └── common/
+│   │   ├── pages/              # 頁面 (Container)
+│   │   │   ├── DashboardPage.jsx
+│   │   │   ├── DeviceDetailPage.jsx
+│   │   │   └── LoginPage.jsx
+│   │   ├── services/           # API 呼叫與 WebSocket
+│   │   │   ├── api/
+│   │   │   └── websocket/
+│   │   ├── hooks/              # React Query hooks
+│   │   │   ├── useDeviceData.js
+│   │   │   ├── useRealtime.js
+│   │   │   └── useControlCommand.js
+│   │   ├── context/            # Context API (全域狀態)
+│   │   │   ├── AppContext.js
+│   │   │   └── AuthContext.js
+│   │   ├── config/
+│   │   └── App.jsx
+│   ├── tests/
+│   │   ├── unit/               # Vitest + React Testing Library
+│   │   └── e2e/                # Playwright E2E 測試
+│   └── package.json
+│
+├── docker-compose.yml          # Docker 編排設定
+└── specs/
+    └── 001-heat-pump-remote-dashboard/
+        ├── spec.md
+        ├── plan.md
+        ├── research.md         # ← 技術決策文件
+        ├── data-model.md       # ← 資料模型定義
+        ├── quickstart.md       # ← 本文件
+        └── contracts/          # OpenAPI 規格
+            ├── device-api.yaml
+            ├── control-api.yaml
+            └── realtime-api.yaml
+```
+
+---
+
+## 開發工作流程
+
+### 1. 新增功能
 
 ```bash
-cd Demo-v1-web
+# 1. 從 main 分支建立功能分支
+git checkout main
+git pull origin main
+git checkout -b feature/your-feature-name
+
+# 2. 開發功能 (參考 API 規格與資料模型)
+
+# 3. 撰寫測試
+npm test  # 執行測試
+
+# 4. 提交程式碼
+git add .
+git commit -m "feat: Add your feature description"
+
+# 5. 推送並建立 Pull Request
+git push origin feature/your-feature-name
+```
+
+### 2. 執行測試
+
+```bash
+# 後端測試 (Jest + Supertest)
+cd backend
+npm test                      # 執行所有測試
+npm run test:watch            # Watch 模式
+npm run test:coverage         # 測試覆蓋率報告
+
+# 前端測試 (Vitest + RTL)
+cd frontend
+npm test                      # 執行所有測試
+npm run test:ui               # Vitest UI 介面
+npm run test:coverage         # 測試覆蓋率報告
+
+# E2E 測試 (Playwright)
+cd frontend
+npm run test:e2e              # 執行 E2E 測試
+npm run test:e2e:ui           # Playwright UI 模式
+```
+
+### 3. 程式碼品質檢查
+
+```bash
+# 後端
+cd backend
+npm run lint                  # ESLint 檢查
+npm run lint:fix              # 自動修正
+npm run format                # Prettier 格式化
+
+# 前端
+cd frontend
+npm run lint
+npm run lint:fix
+npm run format
+```
+
+---
+
+## 常用開發指令
+
+### 後端 (backend/)
+
+| 指令 | 說明 |
+|------|------|
+| `npm run dev` | 啟動開發伺服器 (Nodemon 自動重載) |
+| `npm run build` | TypeScript 編譯 (若使用 TS) |
+| `npm start` | 啟動生產伺服器 |
+| `npm run db:migrate` | 執行資料庫遷移 |
+| `npm run db:seed` | 插入種子資料 |
+| `npm run db:reset` | 重置資料庫 (危險！) |
+| `npm test` | 執行測試 |
+| `npm run lint` | 程式碼檢查 |
+
+### 前端 (frontend/)
+
+| 指令 | 說明 |
+|------|------|
+| `npm run dev` | 啟動開發伺服器 (Vite HMR) |
+| `npm run build` | 建置生產版本 |
+| `npm run preview` | 預覽生產建置 |
+| `npm test` | 執行單元測試 |
+| `npm run test:e2e` | 執行 E2E 測試 |
+| `npm run lint` | 程式碼檢查 |
+
+---
+
+## 範例程式碼
+
+### 1. 後端 API 端點範例 (Express)
+
+**backend/src/api/routes/device.js**:
+```javascript
+const express = require('express');
+const router = express.Router();
+const { authenticate, checkRole } = require('../middleware/auth');
+const deviceService = require('../../services/device-service');
+
+// 取得所有裝置清單 (所有角色皆可存取)
+router.get('/devices', authenticate, async (req, res, next) => {
+  try {
+    const devices = await deviceService.getAllDevices();
+    res.json({
+      success: true,
+      data: devices
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 取得單一裝置詳細資料
+router.get('/devices/:id', authenticate, async (req, res, next) => {
+  try {
+    const device = await deviceService.getDeviceById(req.params.id);
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        error: 'Device not found'
+      });
+    }
+    res.json({
+      success: true,
+      data: device
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+module.exports = router;
+```
+
+### 2. Socket.io 即時資料推送 (後端)
+
+**backend/src/websocket/device-events.js**:
+```javascript
+const socketIO = require('socket.io');
+const jwt = require('jsonwebtoken');
+
+function initializeWebSocket(server) {
+  const io = socketIO(server, {
+    cors: {
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      credentials: true
+    }
+  });
+
+  // Socket.io 認證中介軟體
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token || socket.handshake.query.token;
+    if (!token) {
+      return next(new Error('Authentication error'));
+    }
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.userId = decoded.id;
+      socket.userRole = decoded.role;
+      next();
+    } catch (err) {
+      next(new Error('Invalid token'));
+    }
+  });
+
+  // 連線處理
+  io.on('connection', (socket) => {
+    console.log(`User ${socket.userId} connected`);
+
+    // 訂閱裝置即時資料
+    socket.on('subscribe:device', (deviceId) => {
+      socket.join(`device:${deviceId}`);
+      console.log(`User ${socket.userId} subscribed to device ${deviceId}`);
+    });
+
+    // 取消訂閱
+    socket.on('unsubscribe:device', (deviceId) => {
+      socket.leave(`device:${deviceId}`);
+    });
+
+    // 斷線處理
+    socket.on('disconnect', () => {
+      console.log(`User ${socket.userId} disconnected`);
+    });
+  });
+
+  // 廣播裝置資料更新 (由 device-service 呼叫)
+  io.broadcastDeviceUpdate = (deviceId, data) => {
+    io.to(`device:${deviceId}`).emit('device:update', data);
+  };
+
+  return io;
+}
+
+module.exports = initializeWebSocket;
+```
+
+### 3. React Query Hook (前端)
+
+**frontend/src/hooks/useDeviceData.js**:
+```javascript
+import { useQuery } from '@tanstack/react-query';
+import { deviceApi } from '../services/api/device-api';
+
+export function useDeviceData(deviceId) {
+  return useQuery({
+    queryKey: ['device', deviceId],
+    queryFn: () => deviceApi.getDeviceById(deviceId),
+    refetchInterval: 5000, // 背景每 5 秒重新驗證
+    staleTime: 2000,        // 2 秒內視為新鮮資料
+    enabled: !!deviceId     // 僅在 deviceId 存在時啟用
+  });
+}
+
+export function useDeviceList() {
+  return useQuery({
+    queryKey: ['devices'],
+    queryFn: () => deviceApi.getAllDevices(),
+    refetchInterval: 10000
+  });
+}
+```
+
+### 4. WebSocket Hook (前端)
+
+**frontend/src/hooks/useRealtime.js**:
+```javascript
+import { useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
+import { useQueryClient } from '@tanstack/react-query';
+
+export function useRealtime(deviceId) {
+  const [data, setData] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!deviceId) return;
+
+    const token = localStorage.getItem('token');
+    const socket = io(import.meta.env.VITE_WS_URL, {
+      auth: { token }
+    });
+
+    socket.on('connect', () => {
+      setConnectionStatus('connected');
+      socket.emit('subscribe:device', deviceId);
+    });
+
+    socket.on('device:update', (newData) => {
+      setData(newData);
+      // 更新 React Query 快取
+      queryClient.setQueryData(['device', deviceId], (oldData) => ({
+        ...oldData,
+        ...newData
+      }));
+    });
+
+    socket.on('disconnect', () => {
+      setConnectionStatus('disconnected');
+    });
+
+    socket.on('connect_error', () => {
+      setConnectionStatus('error');
+    });
+
+    return () => {
+      socket.emit('unsubscribe:device', deviceId);
+      socket.disconnect();
+    };
+  }, [deviceId, queryClient]);
+
+  return { data, connectionStatus };
+}
+```
+
+### 5. 遠端控制 Mutation Hook (前端)
+
+**frontend/src/hooks/useControlCommand.js**:
+```javascript
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { controlApi } from '../services/api/control-api';
+import { toast } from 'react-toastify';
+
+export function useControlCommand() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (command) => controlApi.sendCommand(command),
+    onMutate: async (command) => {
+      // 樂觀更新 (Optimistic Update)
+      await queryClient.cancelQueries(['device', command.deviceId]);
+      const previousDevice = queryClient.getQueryData(['device', command.deviceId]);
+      
+      // 暫時更新裝置狀態
+      queryClient.setQueryData(['device', command.deviceId], (old) => ({
+        ...old,
+        operation_mode: command.commandType === 'switch_mode' ? command.payload.target_mode : old.operation_mode
+      }));
+
+      return { previousDevice };
+    },
+    onError: (error, command, context) => {
+      // 回滾至先前狀態
+      queryClient.setQueryData(['device', command.deviceId], context.previousDevice);
+      toast.error('控制指令失敗：' + error.message);
+    },
+    onSuccess: (data) => {
+      toast.success('控制指令已送出，等待裝置確認');
+      // 輪詢指令狀態
+      pollCommandStatus(data.commandId);
+    }
+  });
+}
+
+async function pollCommandStatus(commandId) {
+  const maxRetries = 10;
+  for (let i = 0; i < maxRetries; i++) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const status = await controlApi.getCommandStatus(commandId);
+    if (status === 'confirmed') {
+      toast.success('裝置已確認執行');
+      break;
+    } else if (status === 'timeout' || status === 'failed') {
+      toast.error('裝置回應逾時或執行失敗');
+      break;
+    }
+  }
+}
+```
+
+---
+
+## 資料庫操作
+
+### 手動連線資料庫
+
+```bash
+# 連線 PostgreSQL
+psql -h localhost -U heatpump_admin -d heatpump_dashboard
+
+# 查詢裝置列表
+SELECT id, device_code, name, status FROM devices;
+
+# 查詢最近 10 筆時序資料
+SELECT time, device_id, metric_name, value, unit
+FROM device_metrics
+ORDER BY time DESC
+LIMIT 10;
+
+# 查詢特定裝置過去 1 小時的溫度趨勢
+SELECT 
+  time_bucket('1 minute', time) AS bucket,
+  AVG(value) AS avg_temp
+FROM device_metrics
+WHERE device_id = 'your-device-uuid'
+  AND metric_name = 'exhaust_temp'
+  AND time > NOW() - INTERVAL '1 hour'
+GROUP BY bucket
+ORDER BY bucket;
+```
+
+### 常用 SQL 維護指令
+
+```sql
+-- 查看 Hypertable 資訊
+SELECT * FROM timescaledb_information.hypertables;
+
+-- 查看 Chunk 分割狀況
+SELECT show_chunks('device_metrics');
+
+-- 手動壓縮特定 Chunk
+SELECT compress_chunk('_timescaledb_internal._hyper_1_1_chunk');
+
+-- 查看壓縮率
+SELECT 
+  pg_size_pretty(before_compression_total_bytes) AS before,
+  pg_size_pretty(after_compression_total_bytes) AS after,
+  ROUND(100 * (1 - after_compression_total_bytes::numeric / before_compression_total_bytes), 2) AS compression_ratio
+FROM timescaledb_information.compression_settings;
+```
+
+---
+
+## 疑難排解
+
+### 問題 1: PostgreSQL 連線失敗
+
+**錯誤訊息**: `ECONNREFUSED` 或 `password authentication failed`
+
+**解決方法**:
+```bash
+# 1. 檢查 PostgreSQL 是否運行
+sudo systemctl status postgresql  # Linux
+brew services list                # macOS
+
+# 2. 重新啟動 PostgreSQL
+sudo systemctl restart postgresql  # Linux
+brew services restart postgresql@15  # macOS
+
+# 3. 檢查密碼是否正確
+psql -h localhost -U heatpump_admin -d heatpump_dashboard
+
+# 4. 檢查 pg_hba.conf 設定
+# 確保允許本地連線 (trust 或 md5)
+```
+
+### 問題 2: TimescaleDB 擴展未安裝
+
+**錯誤訊息**: `extension "timescaledb" does not exist`
+
+**解決方法**:
+```bash
+# 連線資料庫
+psql -U heatpump_admin -d heatpump_dashboard
+
+# 手動建立擴展
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+```
+
+### 問題 3: WebSocket 連線失敗
+
+**錯誤訊息**: `WebSocket connection failed` 或 `400 Bad Request`
+
+**解決方法**:
+1. 檢查後端伺服器是否運行 (`http://localhost:8000`)
+2. 檢查 CORS 設定 (後端 `backend/src/config/server.js`)
+3. 檢查前端環境變數 `VITE_WS_URL`
+4. 檢查瀏覽器 Console 是否有 Token 問題
+
+### 問題 4: npm install 失敗
+
+**錯誤訊息**: `EACCES` 或 `permission denied`
+
+**解決方法**:
+```bash
+# 不要使用 sudo npm install
+# 修正 npm 權限問題
+mkdir ~/.npm-global
+npm config set prefix '~/.npm-global'
+echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+
+# 重新安裝
 npm install
 ```
 
-#### 3.2 配置 API Base URL
+---
 
-編輯 `src/config.js`:
+## 參考資源
 
-```javascript
-// src/config.js (add heat pump API endpoints)
-export const config = {
-  // ... existing config
-  heatPumpAPI: {
-    baseURL: window.location.protocol + '//' + window.location.hostname + ':' + window.location.port + '/api',
-    wsBaseURL: 'ws://' + window.location.hostname + ':8000'
-  }
-};
-```
+### 官方文件
+- **Node.js**: https://nodejs.org/docs/
+- **Express.js**: https://expressjs.com/
+- **Socket.io**: https://socket.io/docs/
+- **React**: https://react.dev/
+- **React Query**: https://tanstack.com/query/latest
+- **PostgreSQL**: https://www.postgresql.org/docs/
+- **TimescaleDB**: https://docs.timescale.com/
 
-#### 3.3 啟動開發伺服器
+### 專案文件
+- **技術決策**: [research.md](research.md)
+- **資料模型**: [data-model.md](data-model.md)
+- **API 規格**: [contracts/](contracts/)
+- **功能規格**: [spec.md](spec.md)
 
-```bash
-npm start
-```
-
-瀏覽器自動開啟 `http://localhost:3000`。
+### 開發工具
+- **Postman Collection**: `/docs/postman/heatpump-api.json`
+- **Database GUI**: DBeaver, pgAdmin, TablePlus
+- **API 測試**: Postman, Insomnia, Thunder Client (VS Code)
 
 ---
 
-## Development Workflow
+## 下一步
 
-### Backend Code Structure
+1. 閱讀 [spec.md](spec.md) 了解完整功能需求
+2. 閱讀 [data-model.md](data-model.md) 熟悉資料結構
+3. 瀏覽 [contracts/](contracts/) 了解 API 介面
+4. 開始開發第一個功能！
 
-```
-Demo-v1-api/
-├── app/
-│   ├── main.py                # FastAPI app 入口
-│   ├── config.py              # 環境變數配置
-│   ├── models/                # SQLAlchemy ORM models
-│   │   ├── device.py
-│   │   ├── user.py
-│   │   ├── realtime_data.py
-│   │   └── control_command.py
-│   ├── schemas/               # Pydantic schemas (API contracts)
-│   │   ├── device.py
-│   │   ├── user.py
-│   │   └── control.py
-│   ├── services/              # Business logic
-│   │   ├── device_service.py
-│   │   ├── realtime_service.py
-│   │   ├── control_service.py
-│   │   └── auth_service.py
-│   ├── api/
-│   │   ├── routes/            # API endpoints
-│   │   │   ├── auth.py
-│   │   │   ├── devices.py
-│   │   │   ├── control.py
-│   │   │   ├── realtime.py    # WebSocket endpoints
-│   │   │   └── historical.py
-│   │   └── middleware/
-│   │       ├── auth.py        # JWT verification
-│   │       └── permission.py  # Role-based access control
-│   ├── db/
-│   │   ├── database.py        # Database connection
-│   │   └── session.py         # Session management
-│   └── workers/
-│       ├── data_retention.py  # 30-day cleanup job
-│       └── command_timeout.py # Command timeout monitor
-└── tests/
-    ├── unit/
-    ├── integration/
-    └── contract/
-```
-
-### Frontend Code Structure
-
-```
-Demo-v1-web/
-├── src/
-│   ├── components/
-│   │   └── DemoV1/
-│   │       └── HeatPump/              # NEW
-│   │           ├── DeviceStatusCard.js
-│   │           ├── DynamicFlowDiagram.js
-│   │           ├── ControlPanel.js
-│   │           └── TrendChart.js
-│   ├── pages/
-│   │   └── DemoV1/
-│   │       └── HeatPump/              # NEW
-│   │           ├── Dashboard.js
-│   │           ├── DeviceDetail.js
-│   │           └── RemoteControl.js
-│   ├── services/
-│   │   └── HeatPumpService.js         # NEW: API client
-│   ├── context/
-│   │   └── HeatPumpContext.js         # NEW: Global state
-│   └── hooks/
-│       ├── useDeviceRealtime.js       # NEW: WebSocket hook
-│       └── useDeviceControl.js        # NEW: Control command hook
-└── tests/
-```
-
----
-
-## Code Examples
-
-### Backend: FastAPI Endpoint
-
-```python
-# app/api/routes/devices.py
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.database import get_db
-from app.models.user import User
-from app.schemas.device import Device, DeviceCreate, DeviceSummary
-from app.services.device_service import DeviceService
-from app.api.middleware.auth import get_current_user
-
-router = APIRouter(prefix="/devices", tags=["Devices"])
-
-@router.get("/", response_model=list[Device])
-async def list_devices(
-    status: str | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """取得所有設備清單 (FR-003, FR-004)"""
-    service = DeviceService(db)
-    devices = await service.get_all_devices(status_filter=status)
-    return devices
-
-@router.get("/summary", response_model=DeviceSummary)
-async def get_devices_summary(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """取得設備總覽統計 (FR-003)"""
-    service = DeviceService(db)
-    summary = await service.get_summary()
-    return summary
-
-@router.get("/{device_id}", response_model=Device)
-async def get_device(
-    device_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """取得單一設備詳細資訊 (FR-005)"""
-    service = DeviceService(db)
-    device = await service.get_device_by_id(device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-    return device
-```
-
-### Backend: WebSocket Real-time Data
-
-```python
-# app/api/routes/realtime.py
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from datetime import datetime
-import asyncio
-import json
-
-router = APIRouter()
-
-# In-memory connection manager (production 使用 Redis Pub/Sub)
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: dict[str, list[WebSocket]] = {}
-    
-    async def connect(self, device_id: str, websocket: WebSocket):
-        await websocket.accept()
-        if device_id not in self.active_connections:
-            self.active_connections[device_id] = []
-        self.active_connections[device_id].append(websocket)
-    
-    def disconnect(self, device_id: str, websocket: WebSocket):
-        if device_id in self.active_connections:
-            self.active_connections[device_id].remove(websocket)
-    
-    async def broadcast(self, device_id: str, message: dict):
-        if device_id in self.active_connections:
-            for connection in self.active_connections[device_id]:
-                await connection.send_json(message)
-
-manager = ConnectionManager()
-
-@router.websocket("/ws/devices/{device_id}")
-async def websocket_device_data(
-    websocket: WebSocket,
-    device_id: str,
-    token: str = Query(...)
-):
-    # 1. Validate token
-    user = await validate_session_token(token)
-    if not user:
-        await websocket.close(code=1008, reason="Unauthorized")
-        return
-    
-    # 2. Accept connection
-    await manager.connect(device_id, websocket)
-    
-    try:
-        # 3. Heartbeat task
-        async def heartbeat():
-            while True:
-                await asyncio.sleep(30)
-                await websocket.send_json({
-                    "type": "ping",
-                    "timestamp": datetime.utcnow().isoformat() + "Z"
-                })
-        
-        heartbeat_task = asyncio.create_task(heartbeat())
-        
-        # 4. Listen for client messages
-        while True:
-            data = await websocket.receive_json()
-            
-            if data.get("type") == "pong":
-                # Received pong, connection alive
-                pass
-            elif data.get("type") == "subscription_update":
-                # Client requesting specific parameters
-                # TODO: Update subscription preferences
-                pass
-    
-    except WebSocketDisconnect:
-        manager.disconnect(device_id, websocket)
-        heartbeat_task.cancel()
-
-# Device data ingestion endpoint (called by IoT devices)
-@router.post("/ingest/{device_code}")
-async def ingest_device_data(
-    device_code: str,
-    data: dict,
-    db: AsyncSession = Depends(get_db)
-):
-    """接收設備推送的資料 (FR-001)"""
-    # 1. Validate device
-    device = await get_device_by_code(device_code, db)
-    if not device:
-        raise HTTPException(404, "Device not found")
-    
-    # 2. Store in database
-    await store_realtime_data(device.id, data, db)
-    
-    # 3. Update device snapshot
-    await update_device_current_values(device.id, data, db)
-    
-    # 4. Check thresholds (anomaly detection)
-    anomalies = await check_thresholds(device.id, data, db)
-    
-    # 5. Broadcast to WebSocket clients
-    message = {
-        "type": "realtime_data",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "deviceId": str(device.id),
-        "data": data
-    }
-    await manager.broadcast(str(device.id), message)
-    
-    # 6. Broadcast anomaly alerts
-    for anomaly in anomalies:
-        alert_message = {
-            "type": "anomaly_alert",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "deviceId": str(device.id),
-            "alert": anomaly
-        }
-        await manager.broadcast(str(device.id), alert_message)
-    
-    return {"status": "ok"}
-```
-
-### Backend: Control Command
-
-```python
-# app/api/routes/control.py
-from fastapi import APIRouter, Depends, HTTPException
-from app.schemas.control import ControlCommandCreate, ControlCommand, CommandStatus
-from app.services.control_service import ControlService
-from app.api.middleware.auth import get_current_user
-from app.api.middleware.permission import require_role
-
-router = APIRouter(prefix="/control", tags=["Control"])
-
-@router.post("/commands", status_code=202, response_model=ControlCommand)
-@require_role("operator")
-async def send_control_command(
-    command: ControlCommandCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """送出遠端控制指令 (FR-012, FR-013, FR-014)"""
-    service = ControlService(db)
-    
-    # 1. Validate device status
-    device = await service.get_device(command.device_id)
-    if device.status == "offline":
-        raise HTTPException(404, detail="DEVICE_OFFLINE")
-    
-    # 2. Validate command for device state
-    if command.command_type == "set_target_temp" and device.mode == "auto":
-        raise HTTPException(422, detail="DEVICE_IN_AUTO_MODE")
-    
-    # 3. Create command record
-    cmd = await service.create_command(
-        device_id=command.device_id,
-        user_id=current_user.id,
-        command_type=command.command_type,
-        command_payload=command.command_payload
-    )
-    
-    # 4. Queue command to device (async)
-    await service.queue_command(cmd)
-    
-    # 5. Return immediately (202 Accepted)
-    return cmd
-
-@router.get("/commands/{command_id}", response_model=ControlCommand)
-async def get_command_status(
-    command_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """查詢指令執行狀態 (FR-014)"""
-    service = ControlService(db)
-    cmd = await service.get_command(command_id)
-    if not cmd:
-        raise HTTPException(404, "Command not found")
-    return cmd
-```
-
-### Frontend: React Hook for WebSocket
-
-```javascript
-// src/hooks/useDeviceRealtime.js
-import { useState, useEffect, useRef, useContext } from 'react';
-import { toast } from 'react-toastify';
-import { AuthContext } from '../context/Context';
-import { config } from '../config';
-
-export function useDeviceRealtime(deviceId) {
-  const [data, setData] = useState(null);
-  const [status, setStatus] = useState('connecting'); // connecting | connected | disconnected
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const { token } = useContext(AuthContext);
-  
-  useEffect(() => {
-    if (!deviceId || !token) return;
-    
-    let reconnectInterval = 1000; // Start with 1s
-    
-    const connect = () => {
-      const ws = new WebSocket(
-        `${config.heatPumpAPI.wsBaseURL}/ws/devices/${deviceId}?token=${token}`
-      );
-      wsRef.current = ws;
-      
-      ws.onopen = () => {
-        console.log('WebSocket connected:', deviceId);
-        setStatus('connected');
-        reconnectInterval = 1000; // Reset reconnect interval
-      };
-      
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        
-        switch (message.type) {
-          case 'realtime_data':
-            // Update real-time data (FR-002: <1s latency)
-            setData(message.data);
-            break;
-          
-          case 'anomaly_alert':
-            // Show anomaly alert (FR-009)
-            toast.error(
-              `${message.alert.message}: ${message.alert.parameterName} = ${message.alert.currentValue}`,
-              { autoClose: 5000 }
-            );
-            break;
-          
-          case 'device_status_change':
-            // Device status changed (FR-018)
-            if (message.status.current === 'offline') {
-              toast.warning('設備已離線', { autoClose: 3000 });
-              setStatus('disconnected');
-            }
-            break;
-          
-          case 'ping':
-            // Respond to heartbeat ping
-            ws.send(JSON.stringify({
-              type: 'pong',
-              timestamp: new Date().toISOString()
-            }));
-            break;
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setStatus('disconnected');
-      };
-      
-      ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
-        setStatus('disconnected');
-        
-        // Auto-reconnect with exponential backoff (FR-018)
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Reconnecting WebSocket...');
-          connect();
-        }, reconnectInterval);
-        
-        reconnectInterval = Math.min(reconnectInterval * 2, 60000); // Max 60s
-      };
-    };
-    
-    connect();
-    
-    // Cleanup on unmount
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, [deviceId, token]);
-  
-  return { data, status };
-}
-```
-
-### Frontend: Control Panel Component
-
-```javascript
-// src/components/DemoV1/HeatPump/ControlPanel.js
-import React, { useState } from 'react';
-import { Button, Modal, Form, InputGroup } from 'react-bootstrap';
-import { toast } from 'react-toastify';
-import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery } from 'react-query';
-import HeatPumpService from '../../../services/HeatPumpService';
-
-const ControlPanel = ({ deviceId, currentMode, currentTargetTemp }) => {
-  const { t } = useTranslation();
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [pendingCommand, setPendingCommand] = useState(null);
-  const [targetTemp, setTargetTemp] = useState(currentTargetTemp || 50);
-  
-  // Send control command mutation
-  const sendCommandMutation = useMutation(
-    (command) => HeatPumpService.sendControlCommand(command),
-    {
-      onSuccess: async (response) => {
-        // Poll for command status (FR-014: max 3s)
-        const maxAttempts = 6; // 6 * 500ms = 3s
-        let attempt = 0;
-        
-        while (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const status = await HeatPumpService.getCommandStatus(response.id);
-          
-          if (status.status === 'confirmed') {
-            toast.success(t('control.command_confirmed'));
-            return;
-          } else if (status.status === 'timeout') {
-            toast.error(t('control.command_timeout'));
-            return;
-          } else if (status.status === 'failed') {
-            toast.error(status.errorMessage || t('control.command_failed'));
-            return;
-          }
-          
-          attempt++;
-        }
-        
-        toast.warning(t('control.command_pending'));
-      },
-      onError: (error) => {
-        if (error.response?.status === 404) {
-          // FR-017: Device offline error
-          toast.error(t('control.device_offline'));
-        } else if (error.response?.status === 403) {
-          toast.error(t('control.permission_denied'));
-        } else if (error.response?.status === 422) {
-          toast.error(error.response.data.message);
-        } else {
-          toast.error(t('control.network_error'));
-        }
-      }
-    }
-  );
-  
-  const handleSwitchMode = (mode) => {
-    // FR-015: Confirmation dialog
-    setPendingCommand({
-      type: 'switch_mode',
-      payload: { mode }
-    });
-    setShowConfirm(true);
-  };
-  
-  const handleSetTargetTemp = () => {
-    if (currentMode === 'auto') {
-      toast.warning(t('control.cannot_set_temp_in_auto_mode'));
-      return;
-    }
-    
-    setPendingCommand({
-      type: 'set_target_temp',
-      payload: { targetTemp }
-    });
-    setShowConfirm(true);
-  };
-  
-  const confirmCommand = () => {
-    sendCommandMutation.mutate({
-      deviceId,
-      commandType: pendingCommand.type,
-      commandPayload: pendingCommand.payload
-    });
-    setShowConfirm(false);
-  };
-  
-  return (
-    <div className="control-panel card">
-      <div className="card-header">
-        <h5>{t('control.panel_title')}</h5>
-      </div>
-      <div className="card-body">
-        {/* Mode Switch */}
-        <div className="mb-3">
-          <label className="form-label">{t('control.mode')}</label>
-          <div className="btn-group w-100">
-            <Button
-              variant={currentMode === 'auto' ? 'primary' : 'outline-primary'}
-              onClick={() => handleSwitchMode('auto')}
-              disabled={sendCommandMutation.isLoading}
-            >
-              {t('control.auto_mode')}
-            </Button>
-            <Button
-              variant={currentMode === 'manual' ? 'primary' : 'outline-primary'}
-              onClick={() => handleSwitchMode('manual')}
-              disabled={sendCommandMutation.isLoading}
-            >
-              {t('control.manual_mode')}
-            </Button>
-          </div>
-        </div>
-        
-        {/* Target Temperature (Manual Mode Only) */}
-        <div className="mb-3">
-          <label className="form-label">{t('control.target_temp')}</label>
-          <InputGroup>
-            <Form.Control
-              type="number"
-              min="30"
-              max="80"
-              step="0.5"
-              value={targetTemp}
-              onChange={(e) => setTargetTemp(parseFloat(e.target.value))}
-              disabled={currentMode === 'auto' || sendCommandMutation.isLoading}
-            />
-            <InputGroup.Text>°C</InputGroup.Text>
-          </InputGroup>
-          <Form.Text className="text-muted">
-            {t('control.temp_range_hint')}
-          </Form.Text>
-        </div>
-        
-        <Button
-          variant="success"
-          className="w-100"
-          onClick={handleSetTargetTemp}
-          disabled={currentMode === 'auto' || sendCommandMutation.isLoading}
-        >
-          {sendCommandMutation.isLoading ? (
-            <>{t('control.sending')}...</>
-          ) : (
-            t('control.apply_settings')
-          )}
-        </Button>
-      </div>
-      
-      {/* Confirmation Modal (FR-015) */}
-      <Modal show={showConfirm} onHide={() => setShowConfirm(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>{t('control.confirm_title')}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {pendingCommand?.type === 'switch_mode' && (
-            <p>
-              {t('control.confirm_switch_mode', {
-                mode: pendingCommand.payload.mode === 'auto'
-                  ? t('control.auto_mode')
-                  : t('control.manual_mode')
-              })}
-            </p>
-          )}
-          {pendingCommand?.type === 'set_target_temp' && (
-            <p>
-              {t('control.confirm_set_temp', {
-                temp: pendingCommand.payload.targetTemp
-              })}
-            </p>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowConfirm(false)}>
-            {t('control.cancel')}
-          </Button>
-          <Button variant="primary" onClick={confirmCommand}>
-            {t('control.confirm')}
-          </Button>
-        </Modal.Footer>
-      </Modal>
-    </div>
-  );
-};
-
-export default ControlPanel;
-```
-
----
-
-## Testing
-
-### Backend Tests (pytest)
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=app --cov-report=html
-
-# Run specific test file
-pytest tests/integration/test_device_api.py
-```
-
-#### Example Test
-
-```python
-# tests/integration/test_device_api.py
-import pytest
-from httpx import AsyncClient
-from app.main import app
-
-@pytest.mark.asyncio
-async def test_list_devices_requires_auth():
-    """FR-023: API endpoints require authentication"""
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get("/api/devices")
-        assert response.status_code == 401
-
-@pytest.mark.asyncio
-async def test_list_devices_with_auth(authenticated_client):
-    """FR-003: List all devices"""
-    response = await authenticated_client.get("/api/devices")
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
-
-@pytest.mark.asyncio
-async def test_send_control_command_operator_role(authenticated_operator_client):
-    """FR-012, FR-024: Operator can send control commands"""
-    response = await authenticated_operator_client.post(
-        "/api/control/commands",
-        json={
-            "deviceId": "550e8400-e29b-41d4-a716-446655440000",
-            "commandType": "switch_mode",
-            "commandPayload": {"mode": "manual"}
-        }
-    )
-    assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "pending"
-```
-
-### Frontend Tests (Jest + React Testing Library)
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage
-npm test -- --coverage
-
-# Run specific test
-npm test -- ControlPanel.test.js
-```
-
-#### Example Test
-
-```javascript
-// src/components/DemoV1/HeatPump/ControlPanel.test.js
-import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import '@testing-library/jest-dom';
-import ControlPanel from './ControlPanel';
-import HeatPumpService from '../../../services/HeatPumpService';
-
-jest.mock('../../../services/HeatPumpService');
-
-describe('ControlPanel', () => {
-  test('renders mode switch buttons', () => {
-    render(
-      <ControlPanel
-        deviceId="test-device-1"
-        currentMode="auto"
-        currentTargetTemp={50}
-      />
-    );
-    
-    expect(screen.getByText('自動模式')).toBeInTheDocument();
-    expect(screen.getByText('手動模式')).toBeInTheDocument();
-  });
-  
-  test('shows confirmation dialog when switching mode (FR-015)', async () => {
-    render(
-      <ControlPanel
-        deviceId="test-device-1"
-        currentMode="auto"
-        currentTargetTemp={50}
-      />
-    );
-    
-    // Click manual mode button
-    fireEvent.click(screen.getByText('手動模式'));
-    
-    // Confirmation dialog should appear
-    await waitFor(() => {
-      expect(screen.getByText('確認切換模式')).toBeInTheDocument();
-    });
-  });
-  
-  test('sends command and shows success toast (FR-014)', async () => {
-    HeatPumpService.sendControlCommand.mockResolvedValue({
-      id: 'cmd-123',
-      status: 'pending'
-    });
-    HeatPumpService.getCommandStatus.mockResolvedValue({
-      id: 'cmd-123',
-      status: 'confirmed'
-    });
-    
-    render(
-      <ControlPanel
-        deviceId="test-device-1"
-        currentMode="auto"
-        currentTargetTemp={50}
-      />
-    );
-    
-    // Click manual mode and confirm
-    fireEvent.click(screen.getByText('手動模式'));
-    await waitFor(() => screen.getByText('確認'));
-    fireEvent.click(screen.getByText('確認'));
-    
-    // Wait for command confirmation
-    await waitFor(() => {
-      expect(HeatPumpService.sendControlCommand).toHaveBeenCalledWith({
-        deviceId: 'test-device-1',
-        commandType: 'switch_mode',
-        commandPayload: { mode: 'manual' }
-      });
-    });
-  });
-});
-```
-
----
-
-## Git Workflow
-
-### Branch Strategy
-
-```bash
-# Work on feature branch
-git checkout 001-heat-pump-remote-dashboard
-
-# Create sub-branch for specific task
-git checkout -b 001-heat-pump-remote-dashboard-backend-api
-
-# Commit changes
-git add .
-git commit -m "feat(api): implement device list endpoint (FR-003)"
-
-# Push to remote
-git push origin 001-heat-pump-remote-dashboard-backend-api
-
-# Create Pull Request on GitHub
-```
-
-### Commit Message Convention
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-
-**Example**:
-```
-feat(api): implement device list endpoint (FR-003)
-
-- Add GET /api/devices with status filter
-- Add DeviceService.get_all_devices()
-- Add integration tests for device listing
-- Update OpenAPI documentation
-
-Closes #42
-```
-
----
-
-## Debugging
-
-### Backend Debug (VS Code)
-
-創建 `.vscode/launch.json`:
-
-```json
-{
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "FastAPI Debug",
-      "type": "python",
-      "request": "launch",
-      "module": "uvicorn",
-      "args": [
-        "app.main:app",
-        "--reload",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8000"
-      ],
-      "jinja": true,
-      "justMyCode": false,
-      "env": {
-        "DATABASE_URL": "postgresql://localhost:5432/heatpump_dashboard"
-      }
-    }
-  ]
-}
-```
-
-### Frontend Debug (Chrome DevTools)
-
-1. 在 Chrome 開啟 Developer Tools (F12)
-2. Sources → Filesystem → Add folder → 選擇 `Demo-v1-web/src`
-3. 設定中斷點並重新載入頁面
-
-### WebSocket Debug
-
-使用 Chrome 擴充套件 [WebSocket King Client](https://chrome.google.com/webstore/detail/websocket-king-client/cbcbkhdmedgianpaifchdaddpnmgnknn):
-
-1. 安裝擴充套件
-2. 連線至 `ws://localhost:8000/ws/devices/{deviceId}?token={yourToken}`
-3. 觀察即時訊息流
-
----
-
-## Performance Optimization
-
-### Backend
-
-1. **Database Query Optimization**:
-   - 使用 TimescaleDB continuous aggregates 減少查詢負擔
-   - 為常用查詢條件建立索引
-   - 使用 `EXPLAIN ANALYZE` 分析慢查詢
-
-2. **WebSocket Scaling**:
-   - 生產環境使用 Redis Pub/Sub 替代記憶體廣播
-   - 多 worker 部署 + Load Balancer
-
-3. **Caching**:
-   - Device summary 快取 (1 秒過期)
-   - Default thresholds 快取 (永久，手動清除)
-
-### Frontend
-
-1. **React Query Caching**:
-   - Device list 快取 5 秒
-   - Device detail 快取 1 秒
-   - Historical data 快取依時間範圍
-
-2. **Code Splitting**:
-   - 使用 `React.lazy()` 分割路由
-
-3. **Chart Performance**:
-   - 使用 ECharts `downsampling` 減少資料點
-   - 限制最大顯示點數 (e.g., 1000 點)
-
----
-
-## Deployment
-
-### Production Checklist
-
-- [ ] Change `SECRET_KEY` in `.env`
-- [ ] Enable PostgreSQL SSL connection
-- [ ] Enable HTTPS (WSS for WebSocket)
-- [ ] Set up Redis for session + WebSocket pub/sub
-- [ ] Configure CORS origins
-- [ ] Enable rate limiting
-- [ ] Set up monitoring (Prometheus + Grafana)
-- [ ] Configure log aggregation (ELK Stack)
-- [ ] Set up automated backups (PostgreSQL daily)
-- [ ] Enable TimescaleDB compression (for data >7 days)
-
-### Docker Deployment
-
-```bash
-# Build images
-docker compose build
-
-# Start services
-docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Stop services
-docker compose down
-```
-
----
-
-## Troubleshooting
-
-### 常見問題
-
-**Q: WebSocket 連線失敗 "Unauthorized"**  
-A: 檢查 token 是否正確，或 session 是否過期（FR-026: 30 分鐘）。
-
-**Q: 資料庫連線錯誤 "password authentication failed"**  
-A: 檢查 `.env` 中 `DATABASE_URL` 的密碼是否正確。
-
-**Q: 前端無法連線至後端 API**  
-A: 確認後端伺服器已啟動 (`uvicorn` 執行中），且 CORS 設定允許前端 origin。
-
-**Q: TimescaleDB 擴充未啟用**  
-A: 執行 `CREATE EXTENSION IF NOT EXISTS timescaledb;` 並重新連線資料庫。
-
----
-
-## Resources
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [React Documentation](https://react.dev/)
-- [TimescaleDB Guides](https://docs.timescale.com/)
-- [WebSocket API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
-- [React Query Documentation](https://tanstack.com/query/latest)
-- [pytest Documentation](https://docs.pytest.org/)
-
----
-
-## Next Steps
-
-1. ✅ Development environment set up
-2. 📝 **Next**: Read `data-model.md` and implement database models
-3. 📝 **Next**: Read `contracts/*.yaml` and implement API endpoints
-4. 📝 **Next**: Implement frontend components per `plan.md` structure
-5. 📝 **Next**: Write tests (target: 80% coverage per Constitution)
-6. 📝 **Next**: Run `/speckit.tasks` to break down implementation tasks
-
----
-
-**Questions?** Contact the team on Slack #heat-pump-dashboard channel.
+**需要協助？** 請聯繫團隊 Tech Lead 或在 Slack #heatpump-dashboard 頻道提問。

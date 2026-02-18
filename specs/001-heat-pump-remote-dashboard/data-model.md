@@ -1,741 +1,371 @@
-# Data Model:熱泵遠端管理儀表板（前端）
+# 資料模型：熱泵遠端管理儀表板
 
-**Date**: 2026-02-17  
-**Phase**: 1 - Design & Contracts  
-**Input**: 關鍵實體 from spec.md + research.md technical decisions
+**功能分支**: `001-heat-pump-remote-dashboard`  
+**建立日期**: 2026年2月18日  
+**狀態**: 完成  
+**來源**: 從 [spec.md](spec.md) 功能需求「關鍵實體」章節提取
 
-## Overview
+## 概述
 
-本文檔定義熱泵遠端管理儀表板的前端資料模型，包含 TypeScript 介面定義、API 資料格式、及狀態管理結構。設計遵循 Constitution 原則：明確區分 Server Cache（設備資料）、Global State（使用者 session）、Local State（UI 狀態）。
+本文件定義熱泵遠端管理儀表板的核心資料模型，包含實體屬性、關聯關係、驗證規則、以及狀態轉換邏輯。資料庫採用 **PostgreSQL 15 + TimescaleDB 擴展**，其中時序資料使用 TimescaleDB Hypertable，其他元資料使用標準 PostgreSQL 表格。
 
-## State Management Architecture
+---
 
-根據 research.md 決策，採用以下狀態管理策略：
-
-- **Server Cache (React Query)**: 設備資料、即時數據、歷史趨勢 → 使用 `useQuery` / `useMutation`
-- **Global State (Context API)**: 使用者 session、權限資訊 → 使用 `UserContext`
-- **Local State (useState)**: UI 臨時狀態（對話框、表單輸入） → 使用 `useState`
-
-## Entity Relationship Diagram
+## 實體關聯圖 (Entity Relationship Diagram)
 
 ```
-┌─────────────┐         ┌──────────────────┐
-│    User     │◄────────│ OperationLog     │
-│  (使用者)   │ records │   (操作紀錄)      │
-└──────┬──────┘         └──────────────────┘
-       │                         │
-       │                         │ references
-       │                         │
-       │ creates                 ▼
-       │                 ┌──────────────────┐
-       │                 │ ControlCommand   │
-       │                 │   (控制指令)      │
-       │                 └────────┬─────────┘
-       │                          │
-       │                          │ targets
-       │                          │
-       ▼                          ▼
-┌─────────────┐         ┌──────────────────┐
-│ ThresholdCfg│◄────────│     Device       │
-│ (閥值配置)   │ belongs │    (設備)         │
-└─────────────┘   to    └────────┬─────────┘
-                                 │
-                                 │ has many
-                                 │
-                ┌────────────────┼────────────────┐
-                │                │                │
-                ▼                ▼                ▼
-       ┌─────────────┐  ┌──────────────┐  ┌──────────────┐
-       │ Component   │  │ RealtimeData │  │HistoricalData│
-       │  (元件)      │  │ (即時資料)    │  │ (歷史資料)    │
-       └─────────────┘  └──────────────┘  └──────────────┘
+User (使用者)
+│
+├─► ControlCommand (控制指令) ─► Device (熱泵設備)
+│                                  │
+└─► ThresholdConfig (閥值配置) ◄───┤
+                                   ├─► Component (元件)
+                                   └─► DeviceMetrics (時序資料)
 ```
 
 ---
 
-## 1. User (使用者)
+## 核心實體
 
-**用途**: 系統管理人員帳號，支援三級權限控制（FR-023, FR-024, FR-026）
+### 1. User (使用者)
 
-**State Category**: Global State (Context API)
+**表格**: `users`  
+**用途**: 系統使用者，支援三級權限控制
 
-### TypeScript Interface
+#### 屬性
 
-```typescript
-export enum UserRole {
-  VIEWER = 'viewer',      // 僅查看
-  OPERATOR = 'operator',  // 可控制設備
-  ADMIN = 'admin'         // 完整權限
-}
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `id` | UUID | ✓ | Primary Key |
+| `account` | VARCHAR(50) | ✓ | 登入帳號 (唯一) |
+| `display_name` | VARCHAR(100) | ✓ | 顯示名稱 |
+| `password_hash` | VARCHAR(255) | ✓ | bcrypt 雜湊密碼 |
+| `role` | ENUM | ✓ | 權限等級: `viewer` / `operator` / `admin` |
+| `email` | VARCHAR(255) |  | 電子郵件 (唯一) |
+| `is_active` | BOOLEAN | ✓ | 帳號狀態 (預設: true) |
+| `last_login_at` | TIMESTAMPTZ |  | 最後登入時間 |
 
-export interface User {
-  id: string;
-  username: string;
-  displayName?: string;
-  email?: string;
-  role: UserRole;
-  isActive: boolean;
-  lastLoginAt?: string;  // ISO 8601 timestamp
-  createdAt: string;
-}
+#### 權限定義
 
-export interface UserSession {
-  id: string;
-  username: string;
-  displayName?: string;
-  role: UserRole;
-  token: string;
-  expiresAt: string;
+| Role | 權限 |
+|------|------|
+| `viewer` | 唯讀：查看儀表板、裝置狀態、歷史趨勢 |
+| `operator` | 查看 + 控制：可執行遠端控制，不可修改閥值 |
+| `admin` | 完整權限：可修改閥值、管理使用者、查看操作紀錄 |
+
+---
+
+### 2. Device (熱泵設備)
+
+**表格**: `devices`  
+**用途**: 代表一台熱泵設備
+
+#### 屬性
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `id` | UUID | ✓ | Primary Key |
+| `device_code` | VARCHAR(50) | ✓ | 裝置編號 (唯一，例如: HP-A-001) |
+| `name` | VARCHAR(100) | ✓ | 裝置名稱 |
+| `location` | VARCHAR(255) | ✓ | 安裝位置 |
+| `status` | ENUM | ✓ | 運作狀態: `running` / `stopped` / `error` / `offline` |
+| `operation_mode` | ENUM | ✓ | 運作模式: `auto` / `manual` |
+| `connection_status` | ENUM | ✓ | 連線狀態: `online` / `offline` / `unstable` |
+| `last_heartbeat_at` | TIMESTAMPTZ |  | 最後心跳時間 (用於判斷離線) |
+| `installed_at` | DATE |  | 安裝日期 |
+
+#### 狀態定義
+
+| Status | 顯示 | 觸發條件 |
+|--------|------|---------|
+| `running` | 🟢 綠色 | 裝置正常運轉 |
+| `stopped` | ⚪ 灰色 | 裝置已停止 |
+| `error` | 🔴 紅色 | 參數超出閥值 |
+| `offline` | ⚫ 黑色 | 超過 30 秒未收到心跳 |
+
+---
+
+### 3. Component (元件)
+
+**表格**: `components`  
+**用途**: 熱泵設備內的子元件 (風扇、幫浦、壓縮機等)
+
+#### 屬性
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `id` | UUID | ✓ | Primary Key |
+| `device_id` | UUID | ✓ | Foreign Key → devices.id |
+| `component_code` | VARCHAR(50) | ✓ | 元件編號 |
+| `name` | VARCHAR(100) | ✓ | 元件名稱 (例如: 1號風扇) |
+| `type` | ENUM | ✓ | 元件類型: `fan` / `pump` / `compressor` / `expansion_valve` / `heat_exchanger` |
+| `status` | ENUM | ✓ | 運作狀態: `running` / `stopped` / `error` |
+
+---
+
+### 4. DeviceMetrics (時序資料)
+
+**表格**: `device_metrics` (TimescaleDB Hypertable)  
+**用途**: 儲存裝置的即時與歷史監測資料
+
+#### 屬性
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `time` | TIMESTAMPTZ | ✓ | 資料時間戳記 (Hypertable 分割鍵) |
+| `device_id` | UUID | ✓ | Foreign Key → devices.id |
+| `metric_name` | VARCHAR(50) | ✓ | 參數名稱 (見下表) |
+| `value` | DOUBLE PRECISION | ✓ | 參數數值 |
+| `unit` | VARCHAR(20) | ✓ | 單位 (例如: °C, MPa, Hz) |
+| `quality` | ENUM | ✓ | 資料品質: `normal` / `abnormal` / `missing` |
+
+#### 參數定義
+
+| metric_name | 中文名稱 | 單位 | 正常範圍 |
+|-------------|---------|------|---------|
+| `exhaust_temp` | 排氣溫度 | °C | 30-90 |
+| `suction_temp` | 吸氣溫度 | °C | -10-30 |
+| `refrigerant_pressure` | 冷媒壓力 | MPa | 0.5-3.0 |
+| `tank_temp` | 水箱溫度 | °C | 10-85 |
+| `target_temp` | 目標水溫 | °C | 40-80 |
+| `compressor_freq` | 壓縮機頻率 | Hz | 20-120 |
+| `power_consumption` | 瞬時耗電量 | kW | 0-50 |
+| `heat_output` | 瞬時產熱量 | kW | 0-200 |
+| `cop` | COP值 (能效比) | - | 2.0-5.0 |
+
+#### TimescaleDB 配置
+
+- **Chunk 間隔**: 7 天
+- **資料保留**: 30 天後自動刪除
+- **壓縮策略**: 7 天前資料自動壓縮 (節省 80% 空間)
+
+---
+
+### 5. ControlCommand (控制指令)
+
+**表格**: `control_commands`  
+**用途**: 記錄管理員送出的遠端控制指令
+
+#### 屬性
+
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `id` | UUID | ✓ | Primary Key |
+| `device_id` | UUID | ✓ | Foreign Key → devices.id |
+| `user_id` | UUID | ✓ | Foreign Key → users.id |
+| `command_type` | ENUM | ✓ | 指令類型: `switch_mode` / `set_parameter` |
+| `payload` | JSONB | ✓ | 指令內容 (JSON 格式) |
+| `status` | ENUM | ✓ | 執行狀態: `pending` / `sent` / `confirmed` / `timeout` / `failed` |
+| `error_message` | TEXT |  | 錯誤訊息 (若失敗) |
+| `sent_at` | TIMESTAMPTZ | ✓ | 送出時間 |
+| `confirmed_at` | TIMESTAMPTZ |  | 確認時間 (需在 3 秒內) |
+
+#### Payload 格式
+
+**切換模式**:
+```json
+{
+  "target_mode": "manual"  // 或 "auto"
 }
 ```
 
-### Usage Example
-
-```typescript
-// Context for Global State
-const UserContext = createContext<UserSession | null>(null);
-
-// Custom hook
-function useUser() {
-  const user = useContext(UserContext);
-  if (!user) throw new Error('User not authenticated');
-  return user;
+**設定參數**:
+```json
+{
+  "parameter_name": "target_temp",
+  "value": 55,
+  "unit": "°C"
 }
+```
 
-// Permission check
-function hasPermission(user: UserSession, action: string): boolean {
-  if (user.role === UserRole.ADMIN) return true;
-  if (user.role === UserRole.OPERATOR && action.startsWith('control:')) return true;
-  if (action.startsWith('view:')) return true;
-  return false;
-}
+#### 狀態轉換
+
+```
+pending → sent → confirmed (成功)
+              ├─→ timeout (3秒未回應)
+              └─→ failed (執行失敗)
 ```
 
 ---
 
-## 2. Device (設備)
+### 6. ThresholdConfig (閥值配置)
 
-**用途**: 代表一台熱泵設備，記錄設備基本資訊及當前狀態（FR-003, FR-004）
+**表格**: `threshold_configs`  
+**用途**: 儲存每台裝置各參數的異常閥值設定
 
-**State Category**: Server Cache (React Query)
+#### 屬性
 
-### TypeScript Interface
+| 欄位 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| `id` | UUID | ✓ | Primary Key |
+| `device_id` | UUID | ✓ | Foreign Key → devices.id |
+| `metric_name` | VARCHAR(50) | ✓ | 參數名稱 |
+| `min_value` | DOUBLE PRECISION | ✓ | 下限閥值 |
+| `max_value` | DOUBLE PRECISION | ✓ | 上限閥值 |
+| `is_default` | BOOLEAN | ✓ | 是否使用預設值 |
+| `last_modified_by` | UUID |  | 最後修改者 ID (Foreign Key → users.id) |
+| `last_modified_at` | TIMESTAMPTZ |  | 最後修改時間 |
 
-```typescript
-export enum DeviceStatus {
-  ONLINE = 'online',    // 在線
-  OFFLINE = 'offline',  // 離線
-  RUNNING = 'running',  // 運作中
-  STOPPED = 'stopped',  // 停止
-  ERROR = 'error'       // 異常
-}
+**約束**: `(device_id, metric_name)` 唯一組合 + `min_value < max_value`
 
-export enum DeviceMode {
-  AUTO = 'auto',      // 自動模式
-  MANUAL = 'manual'   // 手動模式
-}
+---
 
-export interface Device {
-  id: string;
-  deviceCode: string;
-  name: string;
-  location?: string;
-  status: DeviceStatus;
-  mode: DeviceMode;
-  
-  // Current snapshot (即時快照)
-  currentCompressorFrequency?: number;
-  currentTemperatureExhaust?: number;
-  currentTemperatureIntake?: number;
-  currentPressure?: number;
-  currentTemperatureWaterTank?: number;
-  currentTargetTemperature?: number;
-  currentPowerKw?: number;
-  currentHeatOutputKw?: number;
-  currentCop?: number;
-  
-  lastDataAt?: string;
-  metadata?: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-}
+## 資料庫 Schema SQL
 
-export interface DeviceSummary {
-  totalDevices: number;
-  onlineDevices: number;
-  offlineDevices: number;
-  runningDevices: number;
-  errorDevices: number;
-  totalPowerKw: number;
-  totalHeatOutputKw: number;
-  averageCop: number;
-}
+### 建立主要表格
+
+```sql
+-- 使用者表
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account VARCHAR(50) UNIQUE NOT NULL,
+  display_name VARCHAR(100) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('viewer', 'operator', 'admin')),
+  email VARCHAR(255) UNIQUE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 裝置表
+CREATE TABLE devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_code VARCHAR(50) UNIQUE NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  status VARCHAR(20) NOT NULL CHECK (status IN ('running', 'stopped', 'error', 'offline')),
+  operation_mode VARCHAR(20) NOT NULL CHECK (operation_mode IN ('auto', 'manual')),
+  connection_status VARCHAR(20) NOT NULL CHECK (connection_status IN ('online', 'offline', 'unstable')),
+  last_heartbeat_at TIMESTAMPTZ,
+  installed_at DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 元件表
+CREATE TABLE components (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  component_code VARCHAR(50) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  type VARCHAR(30) NOT NULL CHECK (type IN ('fan', 'pump', 'compressor', 'expansion_valve', 'heat_exchanger')),
+  status VARCHAR(20) NOT NULL CHECK (status IN ('running', 'stopped', 'error')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 控制指令表
+CREATE TABLE control_commands (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id),
+  command_type VARCHAR(30) NOT NULL CHECK (command_type IN ('switch_mode', 'set_parameter')),
+  payload JSONB NOT NULL,
+  status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'sent', 'confirmed', 'timeout', 'failed')),
+  error_message TEXT,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  confirmed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 閥值配置表
+CREATE TABLE threshold_configs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  metric_name VARCHAR(50) NOT NULL,
+  min_value DOUBLE PRECISION NOT NULL,
+  max_value DOUBLE PRECISION NOT NULL,
+  is_default BOOLEAN NOT NULL DEFAULT TRUE,
+  last_modified_by UUID REFERENCES users(id),
+  last_modified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (device_id, metric_name),
+  CHECK (min_value < max_value)
+);
 ```
 
-### Usage Example
+### 建立 TimescaleDB Hypertable
 
-```typescript
-// React Query for Server Cache
-function useDevices() {
-  return useQuery('devices', async () => {
-    const response = await fetch('/api/devices');
-    return response.json() as Device[];
-  });
-}
+```sql
+-- 時序資料表
+CREATE TABLE device_metrics (
+  time TIMESTAMPTZ NOT NULL,
+  device_id UUID NOT NULL,
+  metric_name VARCHAR(50) NOT NULL,
+  value DOUBLE PRECISION NOT NULL,
+  unit VARCHAR(20) NOT NULL,
+  quality VARCHAR(20) NOT NULL CHECK (quality IN ('normal', 'abnormal', 'missing')),
+  PRIMARY KEY (time, device_id, metric_name)
+);
 
-function useDeviceSummary() {
-  return useQuery('device-summary', async () => {
-    const response = await fetch('/api/devices/summary');
-    return response.json() as DeviceSummary;
-  });
-}
+-- 轉換為 Hypertable
+SELECT create_hypertable('device_metrics', 'time', chunk_time_interval => INTERVAL '7 days');
+
+-- 設定保留策略 (30 天)
+SELECT add_retention_policy('device_metrics', INTERVAL '30 days');
+
+-- 設定壓縮策略 (7 天)
+ALTER TABLE device_metrics SET (
+  timescaledb.compress,
+  timescaledb.compress_segmentby = 'device_id'
+);
+SELECT add_compression_policy('device_metrics', INTERVAL '7 days');
 ```
 
 ---
 
-## 3. Component (元件)
+## 效能優化
 
-**用途**: 設備內子元件狀態（風扇、幫浦、壓縮機等），FR-006 要求顯示元件狀態
+### 索引策略
 
-**State Category**: Server Cache (React Query)
+```sql
+-- Users
+CREATE INDEX idx_users_role ON users(role);
 
-### TypeScript Interface
+-- Devices
+CREATE INDEX idx_devices_status ON devices(status);
+CREATE INDEX idx_devices_connection ON devices(connection_status);
 
-```typescript
-export enum ComponentStatus {
-  RUNNING = 'running', // 運轉中
-  STOPPED = 'stopped', // 停止
-  ERROR = 'error'      // 異常
-}
+-- Components
+CREATE INDEX idx_components_device ON components(device_id);
+CREATE INDEX idx_components_device_type ON components(device_id, type);
 
-export interface Component {
-  id: string;
-  deviceId: string;
-  componentCode: string;
-  componentType: string;
-  name: string;
-  status: ComponentStatus;
-  metadata?: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-}
+-- DeviceMetrics
+CREATE INDEX idx_metrics_device ON device_metrics(device_id, time DESC);
+
+-- ControlCommands
+CREATE INDEX idx_commands_device ON control_commands(device_id);
+CREATE INDEX idx_commands_status ON control_commands(status);
+
+-- ThresholdConfigs
+CREATE INDEX idx_thresholds_device ON threshold_configs(device_id);
 ```
 
-### Usage Example
+### 查詢優化範例
 
-```typescript
-function useDeviceComponents(deviceId: string) {
-  return useQuery(['device-components', deviceId], async () => {
-    const response = await fetch(`/api/devices/${deviceId}/components`);
-    return response.json() as Component[];
-  });
-}
-```
-
----
-
-## 4. RealtimeData (即時資料)
-
-**用途**: 設備回報的即時監測數據（FR-001, FR-002），透過 WebSocket 推送
-
-**State Category**: Local State (useState) + WebSocket
-
-### TypeScript Interface
-
-```typescript
-export enum DataQuality {
-  NORMAL = 'normal',   // 正常
-  ANOMALY = 'anomaly'  // 異常
-}
-
-export interface RealtimeData {
-  time: string;  // ISO 8601
-  deviceId: string;
-  compressorFrequency?: number;
-  temperatureExhaust?: number;
-  temperatureIntake?: number;
-  temperatureWaterTank?: number;
-  pressure?: number;
-  powerKw?: number;
-  heatOutputKw?: number;
-  cop?: number;
-  dataQuality: DataQuality;
-  metadata?: Record<string, any>;
-}
-```
-
-### Usage Example
-
-```typescript
-// Custom hook for WebSocket
-function useDeviceRealtime(deviceId: string) {
-  const [data, setData] = useState<RealtimeData | null>(null);
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
-  
-  useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/devices/${deviceId}`);
-    
-    ws.onopen = () => setStatus('connected');
-    ws.onmessage = (event) => {
-      const newData = JSON.parse(event.data) as RealtimeData;
-      setData(newData);
-    };
-    ws.onerror = () => {
-      toast.error('連線中斷，請檢查網路');
-      setStatus('disconnected');
-    };
-    ws.onclose = () => setStatus('disconnected');
-    
-    return () => ws.close();
-  }, [deviceId]);
-  
-  return { data, status };
-}
+```sql
+-- 長時間範圍聚合使用 time_bucket
+SELECT 
+  time_bucket('1 hour', time) AS hour,
+  AVG(value) AS avg_value
+FROM device_metrics
+WHERE device_id = '[device-uuid]'
+  AND metric_name = 'exhaust_temp'
+  AND time > NOW() - INTERVAL '30 days'
+GROUP BY hour
+ORDER BY hour;
 ```
 
 ---
 
-## 5. HistoricalData (歷史資料)
+## 總結
 
-**用途**: 聚合後的歷史趨勢資料（FR-007），用於繪製趨勢圖表
+✅ **完整性**: 涵蓋所有功能需求實體  
+✅ **一致性**: 外鍵約束與驗證規則確保資料正確性  
+✅ **效能**: TimescaleDB 時序優化 + 索引策略滿足即時查詢  
+✅ **擴展性**: Schema 設計支援未來新增參數與功能  
 
-**State Category**: Server Cache (React Query)
-
-### TypeScript Interface
-
-```typescript
-export interface HistoricalData {
-  timestamp: string;
-  deviceId: string;
-  avgCompressorFrequency?: number;
-  avgTemperatureExhaust?: number;
-  avgTemperatureIntake?: number;
-  avgTemperatureWaterTank?: number;
-  avgPressure?: number;
-  avgPowerKw?: number;
-  avgHeatOutputKw?: number;
-  avgCop?: number;
-  maxTemperatureExhaust?: number;
-  minTemperatureExhaust?: number;
-}
-
-export interface HistoricalDataQuery {
-  deviceId: string;
-  startTime: string;
-  endTime: string;
-  interval: '1min' | '1hour' | '1day';
-  parameters: string[];
-}
-```
-
-### Usage Example
-
-```typescript
-function useHistoricalData(query: HistoricalDataQuery) {
-  return useQuery(['historical-data', query], async () => {
-    const response = await fetch('/api/historical-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(query)
-    });
-    return response.json() as HistoricalData[];
-  });
-}
-```
-
----
-
-## 6. ControlCommand (控制指令)
-
-**用途**: 遠端控制指令紀錄（FR-012, FR-013, FR-014），追蹤指令執行狀態
-
-**State Category**: Server Cache (React Query) + Mutation
-
-### TypeScript Interface
-
-```typescript
-export enum CommandType {
-  SWITCH_MODE = 'switch_mode',
-  SET_TARGET_TEMP = 'set_target_temp',
-  EMERGENCY_STOP = 'emergency_stop'
-}
-
-export enum CommandStatus {
-  PENDING = 'pending',
-  SENT = 'sent',
-  CONFIRMED = 'confirmed',
-  TIMEOUT = 'timeout',
-  FAILED = 'failed'
-}
-
-export interface ControlCommand {
-  id: string;
-  deviceId: string;
-  userId: string;
-  commandType: CommandType;
-  commandPayload: Record<string, any>;
-  status: CommandStatus;
-  sentAt?: string;
-  confirmedAt?: string;
-  errorMessage?: string;
-  createdAt: string;
-}
-
-export interface ControlCommandCreate {
-  deviceId: string;
-  commandType: CommandType;
-  commandPayload: Record<string, any>;
-}
-```
-
-### Usage Example
-
-```typescript
-function useSendControlCommand() {
-  return useMutation(
-    async (command: ControlCommandCreate) => {
-      const response = await fetch('/api/control/commands', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(command)
-      });
-      return response.json() as ControlCommand;
-    },
-    {
-      onSuccess: () => {
-        toast.success('指令已送出');
-      },
-      onError: (error) => {
-        toast.error('指令送出失敗，請稍後再試');
-      }
-    }
-  );
-}
-```
-
----
-
-## 7. ThresholdConfig (閥值配置)
-
-**用途**: 異常偵測閥值設定（FR-009, FR-010, FR-011），每台設備可自訂或使用預設值
-
-**State Category**: Server Cache (React Query)
-
-### TypeScript Interface
-
-```typescript
-export interface ThresholdConfig {
-  id: string;
-  deviceId: string;
-  parameterName: string;
-  upperLimit?: number;
-  lowerLimit?: number;
-  useDefault: boolean;
-  updatedBy?: string;
-  updatedAt: string;
-  createdAt: string;
-}
-
-export interface ThresholdConfigUpdate {
-  parameterName: string;
-  upperLimit: number;
-  lowerLimit: number;
-  useDefault: boolean;
-}
-
-export interface DefaultThreshold {
-  parameterName: string;
-  upperLimit: number;
-  lowerLimit: number;
-  description: string;
-}
-```
-
-### Default Threshold Values (FR-010)
-
-系統提供以下預設閥值作為初始設定，管理員可依設備特性調整：
-
-| 參數名稱 | 下限 | 上限 | 單位 | 說明 |
-|---------|------|------|------|------|
-| temperatureExhaust | 60 | 120 | °C | 排氣溫度正常範圍 |
-| temperatureIntake | -10 | 30 | °C | 吸氣溫度正常範圍 |
-| temperatureWaterTank | 30 | 80 | °C | 水箱溫度正常範圍 |
-| pressure | 8 | 28 | bar | 冷媒壓力正常範圍 |
-| compressorFrequency | 20 | 120 | Hz | 壓縮機頻率正常範圍 |
-| cop | 2.0 | 6.0 | - | COP值正常範圍 |
-
-**Note**: 這些預設值由後端資料庫儲存（參考 `contracts/device-api.yaml` 的 `/api/devices/{deviceId}/thresholds/defaults` 端點）。前端透過 API 讀取並允許管理員覆寫。
-
-### Usage Example
-
-```typescript
-function useThresholdConfigs(deviceId: string) {
-  return useQuery(['threshold-configs', deviceId], async () => {
-    const response = await fetch(`/api/devices/${deviceId}/thresholds`);
-    return response.json() as ThresholdConfig[];
-  });
-}
-
-function useUpdateThreshold(deviceId: string) {
-  const queryClient = useQueryClient();
-  
-  return useMutation(
-    async (update: ThresholdConfigUpdate) => {
-      const response = await fetch(`/api/devices/${deviceId}/thresholds`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(update)
-      });
-      return response.json();
-    },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['threshold-configs', deviceId]);
-        toast.success('閾值已更新');
-      }
-    }
-  );
-}
-```
-
----
-
-## 8. OperationLog (操作紀錄)
-
-**用途**: 審計記錄所有遠端控制操作（FR-019），追蹤誰在何時執行何操作
-
-**Storage**: 操作紀錄儲存於後端資料庫（由後端 API 負責寫入），前端僅透過 API 查詢與顯示。紀錄保留期限由後端政策決定（建議至少保留90天供審計使用）。
-
-**State Category**: Server Cache (React Query)
-
-### TypeScript Interface
-
-```typescript
-export interface OperationLog {
-  id: string;
-  userId: string;
-  deviceId?: string;
-  operationType: string;
-  operationDetail: Record<string, any>;
-  ipAddress?: string;
-  userAgent?: string;
-  createdAt: string;
-}
-
-export interface OperationLogQuery {
-  userId?: string;
-  deviceId?: string;
-  operationType?: string;
-  startTime?: string;
-  endTime?: string;
-  page: number;
-  pageSize: number;
-}
-```
-
-### Usage Example
-
-```typescript
-function useOperationLogs(query: OperationLogQuery) {
-  return useQuery(['operation-logs', query], async () => {
-    const params = new URLSearchParams(query as any);
-    const response = await fetch(`/api/operation-logs?${params}`);
-    return response.json() as OperationLog[];
-  });
-}
-```
-
----
-
-## State Management Summary
-
-| Entity | State Category | Tool | Rationale |
-|--------|---------------|------|-----------|
-| User Session | Global State | Context API | 所有頁面需存取，變動頻率低 |
-| Device List | Server Cache | React Query | API 資料，需快取與重新驗證 |
-| Realtime Data | Local State + WebSocket | useState | 即時推送，不需快取 |
-| Historical Data | Server Cache | React Query | API 資料，依查詢參數快取 |
-| Control Command | Server Cache + Mutation | React Query | API 操作，需追蹤狀態 |
-| Threshold Config | Server Cache | React Query | API 資料，低頻變動 |
-| Operation Logs | Server Cache | React Query | API 資料，分頁載入 |
-| UI State (對話框、表單) | Local State | useState | 臨時狀態，無需跨元件 |
-
----
-
-## API Integration Patterns
-
-### 1. Data Fetching with React Query
-
-```typescript
-// services/HeatPumpService.ts
-export const HeatPumpService = {
-  async getDevices(): Promise<Device[]> {
-    const response = await fetch('/api/devices', {
-      headers: {
-        'Authorization': `Bearer ${getToken()}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    if (!response.ok) throw new Error('Failed to fetch devices');
-    return response.json();
-  },
-  
-  async getDeviceSummary(): Promise<DeviceSummary> {
-    const response = await fetch('/api/devices/summary');
-    if (!response.ok) throw new Error('Failed to fetch summary');
-    return response.json();
-  }
-};
-
-// In component
-function Dashboard() {
-  const { data: summary, isLoading, error } = useQuery(
-    'device-summary',
-    HeatPumpService.getDeviceSummary,
-    { refetchInterval: 5000 } // 每 5 秒更新
-  );
-  
-  if (isLoading) return <Skeleton />;
-  if (error) return <ErrorMessage error={error} />;
-  
-  return <SummaryCards summary={summary} />;
-}
-```
-
-### 2. WebSocket Integration
-
-```typescript
-// hooks/useDeviceRealtime.ts
-export function useDeviceRealtime(deviceId: string) {
-  const [data, setData] = useState<RealtimeData | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
-  const reconnectIntervalRef = useRef(1000);
-  
-  useEffect(() => {
-    let ws: WebSocket;
-    
-    const connect = () => {
-      ws = new WebSocket(`${WS_BASE_URL}/devices/${deviceId}`);
-      
-      ws.onopen = () => {
-        setConnectionStatus('connected');
-        reconnectIntervalRef.current = 1000;
-      };
-      
-      ws.onmessage = (event) => {
-        const newData = JSON.parse(event.data) as RealtimeData;
-        setData(newData);
-      };
-      
-      ws.onerror = () => {
-        setConnectionStatus('disconnected');
-      };
-      
-      ws.onclose = () => {
-        setConnectionStatus('disconnected');
-        // Auto-reconnect with exponential backoff
-        setTimeout(() => {
-          if (reconnectIntervalRef.current < 60000) {
-            reconnectIntervalRef.current *= 2;
-          }
-          connect();
-        }, reconnectIntervalRef.current);
-      };
-    };
-    
-    connect();
-    return () => ws?.close();
-  }, [deviceId]);
-  
-  return { data, connectionStatus };
-}
-```
-
-### 3. Permission-Based Rendering
-
-```typescript
-// context/PermissionContext.tsx
-export const PermissionContext = createContext<{
-  hasPermission: (action: string) => boolean;
-} | null>(null);
-
-export function PermissionProvider({ children }: { children: ReactNode }) {
-  const user = useUser();
-  
-  const hasPermission = useCallback((action: string) => {
-    if (user.role === UserRole.ADMIN) return true;
-    if (user.role === UserRole.OPERATOR && action.startsWith('control:')) return true;
-    if (action.startsWith('view:')) return true;
-    return false;
-  }, [user]);
-  
-  return (
-    <PermissionContext.Provider value={{ hasPermission }}>
-      {children}
-    </PermissionContext.Provider>
-  );
-}
-
-// Usage in component
-function ControlPanel({ deviceId }: { deviceId: string }) {
-  const { hasPermission } = useContext(PermissionContext);
-  
-  if (!hasPermission('control:device')) {
-    return null; // Or show read-only view
-  }
-  
-  return <ControlButtons deviceId={deviceId} />;
-}
-```
-
----
-
-## Type Safety Best Practices
-
-### 1. API Response Validation
-
-```typescript
-import { z } from 'zod';
-
-// Define schema for runtime validation
-const DeviceSchema = z.object({
-  id: z.string().uuid(),
-  deviceCode: z.string(),
-  name: z.string(),
-  status: z.enum(['online', 'offline', 'running', 'stopped', 'error']),
-  mode: z.enum(['auto', 'manual']),
-  // ... other fields
-});
-
-export async function getDevices(): Promise<Device[]> {
-  const response = await fetch('/api/devices');
-  const data = await response.json();
-  
-  // Validate at runtime
-  return z.array(DeviceSchema).parse(data);
-}
-```
-
-### 2. Type Guards
-
-```typescript
-export function isDeviceOnline(device: Device): boolean {
-  return device.status !== DeviceStatus.OFFLINE;
-}
-
-export function canControlDevice(user: UserSession, device: Device): boolean {
-  if (!isDeviceOnline(device)) return false;
-  if (user.role === UserRole.VIEWER) return false;
-  return true;
-}
-```
-
----
-
-## Next Steps
-
-1. ✅ TypeScript interfaces defined
-2. 📝 Generate OpenAPI contracts based on these interfaces
-3. 📝 Implement React components using these types
-4. 📝 Set up React Query configuration
-5. 📝 Implement WebSocket connection management
+**下一步**: 進入 Phase 1 - 設計 API 合約 (contracts/)
