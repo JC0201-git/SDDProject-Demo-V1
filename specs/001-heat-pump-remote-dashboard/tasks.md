@@ -59,6 +59,7 @@ description: "Task list for Heat Pump Remote Dashboard (Frontend)"
 - [ ] T019 Create PermissionContext provider in src/context/PermissionContext.tsx with hasPermission() function
 - [ ] T020 Create useUser custom hook in src/hooks/useUser.ts
 - [ ] T021 Create usePermission custom hook in src/hooks/usePermission.ts
+- [ ] T021a Implement 30-minute idle timeout with auto-logout in UserContext (FR-026)
 - [ ] T022 Create RequirePermission component in src/components/DemoV1/common/RequirePermission.tsx
 
 ### API Service Layer
@@ -66,7 +67,7 @@ description: "Task list for Heat Pump Remote Dashboard (Frontend)"
 - [ ] T023 Create HeatPumpService.ts base file with axios instance in src/services/HeatPumpService.ts
 - [ ] T024 Implement request interceptor for authentication token in src/services/HeatPumpService.ts
 - [ ] T025 Implement response interceptor for error handling (4xx/5xx → toast) in src/services/HeatPumpService.ts
-- [ ] T026 [P] Implement login() and logout() methods in src/services/HeatPumpService.ts
+- [ ] T026 [P] Implement login() and logout() methods in src/services/HeatPumpService.ts (logout must clear localStorage, sessionStorage, React Query cache per FR-027)
 - [ ] T027 [P] Implement getDevices() method in src/services/HeatPumpService.ts
 - [ ] T028 [P] Implement getDeviceSummary() method in src/services/HeatPumpService.ts
 
@@ -97,7 +98,7 @@ description: "Task list for Heat Pump Remote Dashboard (Frontend)"
 - [ ] T036 [US1] Implement useDevices hook with React Query in src/hooks/useDevices.ts
 - [ ] T037 [US1] Implement useDeviceSummary hook with React Query in src/hooks/useDeviceSummary.ts
 - [ ] T038 [US1] Integrate DeviceStatusCard with device data and status indicators (green/red/gray)
-- [ ] T039 [US1] Implement 5-second auto-refresh for device list using React Query refetchInterval
+- [ ] T039 [US1] Integrate WebSocket real-time updates for device list (<1s update per FR-002) using useDeviceRealtime hook
 - [ ] T040 [US1] Add Skeleton loading states for Dashboard in src/components/DemoV1/HeatPump/DashboardSkeleton.tsx
 - [ ] T041 [US1] Add Empty State component when no devices in src/components/DemoV1/HeatPump/EmptyDeviceList.tsx
 - [ ] T042 [US1] Implement permission-based UI rendering (hide controls for viewers) in Dashboard
@@ -179,8 +180,21 @@ description: "Task list for Heat Pump Remote Dashboard (Frontend)"
 - [ ] T078 [US3] Add error toast notification for failures
 - [ ] T079 [US3] Implement command status polling until confirmed
 - [ ] T080 [US3] Add operation log recording integration
+- [ ] T081a [P] [US3] Create ThresholdConfigModal component for editing thresholds in src/components/DemoV1/HeatPump/ThresholdConfigModal.tsx
+- [ ] T081b [P] [US3] Create useThresholdConfig hook with React Query in src/hooks/useThresholdConfig.ts
+- [ ] T081c [US3] Integrate threshold configuration UI into DeviceDetail page (FR-011)
 
 **Checkpoint**: All P1 and P2 stories complete - users can monitor, drill down, and control devices
+
+---
+
+## Phase 5a: Threshold & Operation Log Management
+
+**Purpose**: Administrative features for threshold configuration and operation audit (FR-010, FR-011, FR-019)
+
+- [ ] T081d [P] Create OperationLogTable component in src/components/DemoV1/HeatPump/OperationLogTable.tsx
+- [ ] T081e [P] Create useOperationLogs hook with React Query in src/hooks/useOperationLogs.ts
+- [ ] T081f Create OperationLog page with filters (user, device, date range) in src/pages/DemoV1/HeatPump/OperationLog.tsx
 
 ---
 
@@ -387,19 +401,20 @@ Developer D:
 
 ## Task Summary
 
-- **Total Tasks**: 120
+- **Total Tasks**: 127 (updated from 120 to address analysis findings)
 - **Phase 1 (Setup)**: 9 tasks
-- **Phase 2 (Foundational)**: 23 tasks - BLOCKS all user stories
+- **Phase 2 (Foundational)**: 24 tasks - BLOCKS all user stories (added T021a for idle timeout)
 - **Phase 3 (US1 - P1)**: 11 tasks - MVP
 - **Phase 4 (US2 - P1)**: 19 tasks - MVP
-- **Phase 5 (US3 - P2)**: 18 tasks
+- **Phase 5 (US3 - P2)**: 21 tasks (added T081a-T081c for threshold configuration UI)
+- **Phase 5a (Threshold & Logs)**: 3 tasks (T081d-T081f for operation log viewing)
 - **Phase 6 (US5 - P2)**: 10 tasks
 - **Phase 7 (US4 - P3)**: 10 tasks
 - **Phase 8 (Polish)**: 20 tasks
 
-**MVP Scope**: 62 tasks (Phase 1 + 2 + 3 + 4)
+**MVP Scope**: 63 tasks (Phase 1 + 2 + 3 + 4) - includes critical security & performance requirements
 
-**Parallel Opportunities**: 47 tasks marked [P] can run in parallel within their phase
+**Parallel Opportunities**: 50 tasks marked [P] can run in parallel within their phase (updated)
 
 **Independent Stories**: Each user story delivers value independently and can be tested/deployed separately
 

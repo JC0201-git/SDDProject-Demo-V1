@@ -451,6 +451,21 @@ export interface DefaultThreshold {
 }
 ```
 
+### Default Threshold Values (FR-010)
+
+系統提供以下預設閥值作為初始設定，管理員可依設備特性調整：
+
+| 參數名稱 | 下限 | 上限 | 單位 | 說明 |
+|---------|------|------|------|------|
+| temperatureExhaust | 60 | 120 | °C | 排氣溫度正常範圍 |
+| temperatureIntake | -10 | 30 | °C | 吸氣溫度正常範圍 |
+| temperatureWaterTank | 30 | 80 | °C | 水箱溫度正常範圍 |
+| pressure | 8 | 28 | bar | 冷媒壓力正常範圍 |
+| compressorFrequency | 20 | 120 | Hz | 壓縮機頻率正常範圍 |
+| cop | 2.0 | 6.0 | - | COP值正常範圍 |
+
+**Note**: 這些預設值由後端資料庫儲存（參考 `contracts/device-api.yaml` 的 `/api/devices/{deviceId}/thresholds/defaults` 端點）。前端透過 API 讀取並允許管理員覆寫。
+
 ### Usage Example
 
 ```typescript
@@ -488,6 +503,8 @@ function useUpdateThreshold(deviceId: string) {
 ## 8. OperationLog (操作紀錄)
 
 **用途**: 審計記錄所有遠端控制操作（FR-019），追蹤誰在何時執行何操作
+
+**Storage**: 操作紀錄儲存於後端資料庫（由後端 API 負責寫入），前端僅透過 API 查詢與顯示。紀錄保留期限由後端政策決定（建議至少保留90天供審計使用）。
 
 **State Category**: Server Cache (React Query)
 
