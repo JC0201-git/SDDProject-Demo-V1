@@ -1,0 +1,719 @@
+openapi: 3.0.3
+info:
+  title: Heat Pump Control API
+  description: |
+    API for remote device control, including mode switching, parameter adjustment, and command tracking.
+    
+    **Permission Requirements**:
+    - **operator** role required to send control commands (FR-024)
+    - **admin** role required for emergency stop and force operations
+    - **viewer** role cannot access any endpoints in this API
+    
+    **Command Flow** (FR-012, FR-013, FR-014):
+    1. User submits control command via POST /control/commands
+    2. Server validates permission and device status
+    3. Server returns 202 Accepted with command ID
+    4. Server sends command to device asynchronously
+    5. Device confirms execution within 3 seconds (or timeout)
+    6. Client polls GET /control/commands/{commandId} or receives WebSocket notification
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/api
+    description: Development server
+  - url: https://dashboard.example.com/api
+    description: Production server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /control/commands:
+    post:
+      summary: Send control command
+      description: |
+        送出遠端控制指令（FR-012, FR-013, FR-014）
+        
+        **Required Role**: operator or admin
+        
+        **Command Types**:
+        - `switch_mode`: 切換自動/手動模式（需確認對話框）
+        - `set_target_temp`: 設定目標水溫（手動模式下）
+        - `emergency_stop`: 緊急停機（僅 admin）
+      tags: [Control]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/SwitchModeCommand'
+                - $ref: '#/components/schemas/SetTargetTempCommand'
+                - $ref: '#/components/schemas/EmergencyStopCommand'
+            examples:
+              switchMode:
+                summary: 切換為手動模式
+                value:
+                  deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                  commandType: "switch_mode"
+                  commandPayload:
+                    mode: "manual"
+              setTargetTemp:
+                summary: 設定目標水溫 55°C
+                value:
+                  deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                  commandType: "set_target_temp"
+                  commandPayload:
+                    targetTemp: 55.0
+              emergencyStop:
+                summary: 緊急停機
+                value:
+                  deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                  commandType: "emergency_stop"
+                  commandPayload:
+                    reason: "Abnormal noise detected"
+      responses:
+        '202':
+          description: Command accepted and queued for execution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlCommandResponse'
+              example:
+                id: "7f3e8c90-1234-5678-9abc-def012345678"
+                deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                userId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                commandType: "switch_mode"
+                commandPayload:
+                  mode: "manual"
+                status: "pending"
+                createdAt: "2026-02-17T10:30:00.000Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Device not found or offline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "DEVICE_OFFLINE"
+                message: "設備目前離線，無法執行遠端控制"
+                details:
+                  deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                  lastDataAt: "2026-02-17T10:25:00.000Z"
+        '422':
+          description: Invalid command for current device state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "INVALID_COMMAND"
+                message: "設備處於自動模式，無法設定目標溫度。請先切換為手動模式。"
+
+    get:
+      summary: List control commands
+      description: 查詢控制指令紀錄（支援分頁、過濾）
+      tags: [Control]
+      parameters:
+        - name: device_id
+          in: query
+          description: Filter by device ID
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          description: Filter by user ID (admin only)
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by command status
+          schema:
+            type: string
+            enum: [pending, sent, confirmed, timeout, failed]
+        - name: start_time
+          in: query
+          description: Start timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          description: End timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Commands retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ControlCommand'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /control/commands/{commandId}:
+    get:
+      summary: Get command status
+      description: |
+        查詢特定指令的執行狀態（FR-014）
+        
+        用於輪詢指令是否已確認，或檢查逾時/失敗原因。
+      tags: [Control]
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          description: Command UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Command status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlCommand'
+              examples:
+                confirmed:
+                  summary: 指令已確認
+                  value:
+                    id: "7f3e8c90-1234-5678-9abc-def012345678"
+                    deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                    userId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    commandType: "switch_mode"
+                    commandPayload:
+                      mode: "manual"
+                    status: "confirmed"
+                    sentAt: "2026-02-17T10:30:00.500Z"
+                    confirmedAt: "2026-02-17T10:30:02.300Z"
+                    createdAt: "2026-02-17T10:30:00.000Z"
+                timeout:
+                  summary: 指令逾時
+                  value:
+                    id: "7f3e8c90-1234-5678-9abc-def012345678"
+                    deviceId: "550e8400-e29b-41d4-a716-446655440000"
+                    userId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    commandType: "set_target_temp"
+                    commandPayload:
+                      targetTemp: 55.0
+                    status: "timeout"
+                    sentAt: "2026-02-17T10:30:00.500Z"
+                    errorMessage: "設備超過 3 秒未回應"
+                    createdAt: "2026-02-17T10:30:00.000Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /control/commands/{commandId}/cancel:
+    post:
+      summary: Cancel pending command
+      description: |
+        取消尚未執行的指令（僅 pending 或 sent 狀態）
+        
+        **Required Role**: operator or admin (且為指令建立者或 admin)
+      tags: [Control]
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Command cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlCommand'
+        '400':
+          description: Command cannot be cancelled (already confirmed or timeout)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "CANNOT_CANCEL"
+                message: "指令已確認執行，無法取消"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /control/validation:
+    post:
+      summary: Validate command (dry-run)
+      description: |
+        驗證指令是否合法，但不實際執行（用於前端表單驗證）
+        
+        檢查項目：
+        - 設備是否在線
+        - 設備當前模式是否允許該操作
+        - 參數範圍是否合法
+      tags: [Control]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/SwitchModeCommand'
+                - $ref: '#/components/schemas/SetTargetTempCommand'
+      responses:
+        '200':
+          description: Command is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+                    example: "指令有效，設備可執行"
+        '400':
+          description: Command is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    const: false
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+              example:
+                valid: false
+                error: "DEVICE_IN_AUTO_MODE"
+                message: "設備處於自動模式，無法手動設定溫度"
+                suggestions:
+                  - "請先切換至手動模式"
+                  - "或等待自動模式完成後再操作"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Session token obtained from /api/auth/login
+
+  schemas:
+    # ==================== Command Types ====================
+    SwitchModeCommand:
+      type: object
+      required: [deviceId, commandType, commandPayload]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        commandType:
+          type: string
+          const: "switch_mode"
+        commandPayload:
+          type: object
+          required: [mode]
+          properties:
+            mode:
+              type: string
+              enum: [auto, manual]
+              description: Target device mode
+
+    SetTargetTempCommand:
+      type: object
+      required: [deviceId, commandType, commandPayload]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        commandType:
+          type: string
+          const: "set_target_temp"
+        commandPayload:
+          type: object
+          required: [targetTemp]
+          properties:
+            targetTemp:
+              type: number
+              format: float
+              minimum: 30.0
+              maximum: 80.0
+              description: Target water temperature (°C)
+
+    EmergencyStopCommand:
+      type: object
+      required: [deviceId, commandType, commandPayload]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        commandType:
+          type: string
+          const: "emergency_stop"
+        commandPayload:
+          type: object
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              description: Reason for emergency stop
+
+    # ==================== Response Schemas ====================
+    ControlCommandResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Command UUID
+        deviceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        commandType:
+          type: string
+          enum: [switch_mode, set_target_temp, emergency_stop]
+        commandPayload:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [pending, sent, confirmed, timeout, failed]
+          description: |
+            - pending: 等待送出
+            - sent: 已送往設備
+            - confirmed: 設備已確認執行
+            - timeout: 設備 3 秒內未回應
+            - failed: 執行失敗
+        createdAt:
+          type: string
+          format: date-time
+
+    ControlCommand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        commandType:
+          type: string
+          enum: [switch_mode, set_target_temp, emergency_stop]
+        commandPayload:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [pending, sent, confirmed, timeout, failed]
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type/code
+        message:
+          type: string
+          description: Human-readable error message (i18n)
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Bad request - Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized - Invalid or expired session token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "UNAUTHORIZED"
+            message: "Session expired or invalid token"
+
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "FORBIDDEN"
+            message: "User role 'viewer' cannot send control commands"
+
+    NotFound:
+      description: Not found - Resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+# ==================== Implementation Notes ====================
+x-implementation-notes: |
+  ## Backend Implementation (FastAPI)
+  
+  ```python
+  from fastapi import APIRouter, Depends, HTTPException
+  from datetime import datetime, timedelta
+  
+  router = APIRouter(prefix="/control", tags=["Control"])
+  
+  @router.post("/commands", status_code=202)
+  async def send_control_command(
+      command: ControlCommandCreate,
+      user: User = Depends(get_current_user)
+  ):
+      # 1. Permission check
+      if user.role not in ["operator", "admin"]:
+          raise HTTPException(403, "Insufficient permissions")
+      
+      # 2. Device status check
+      device = await get_device(command.device_id)
+      if device.status == "offline":
+          raise HTTPException(404, "Device offline")
+      
+      # 3. Command validation
+      if command.command_type == "set_target_temp" and device.mode == "auto":
+          raise HTTPException(422, "Cannot set target temp in auto mode")
+      
+      # 4. Create command record
+      cmd = await create_command_record(
+          device_id=command.device_id,
+          user_id=user.id,
+          command_type=command.command_type,
+          command_payload=command.command_payload,
+          status="pending"
+      )
+      
+      # 5. Send command to device queue (async)
+      await device_command_queue.put({
+          "command_id": cmd.id,
+          "device_id": device.id,
+          "command": command.dict()
+      })
+      
+      # 6. Update status to 'sent'
+      await update_command_status(cmd.id, "sent", sent_at=datetime.utcnow())
+      
+      # 7. Return immediately (202 Accepted)
+      return cmd
+  
+  # Background worker to handle command timeout
+  async def command_timeout_worker():
+      while True:
+          # Find commands sent but not confirmed for >3s
+          timeout_commands = await db.execute("""
+              SELECT id FROM control_commands
+              WHERE status = 'sent'
+              AND sent_at < NOW() - INTERVAL '3 seconds'
+          """)
+          
+          for cmd in timeout_commands:
+              await update_command_status(
+                  cmd.id,
+                  "timeout",
+                  error_message="設備超過 3 秒未回應"
+              )
+              
+              # Send WebSocket notification
+              await notify_user_command_timeout(cmd)
+          
+          await asyncio.sleep(1)
+  ```
+  
+  ## Frontend Implementation (React)
+  
+  ```typescript
+  function ControlPanel({ deviceId }: { deviceId: string }) {
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [commandPending, setCommandPending] = useState(false);
+    const { mutateAsync: sendCommand } = useMutation(sendControlCommand);
+    
+    const handleSwitchMode = async (mode: 'auto' | 'manual') => {
+      // FR-015: Confirmation dialog
+      const confirmed = await showConfirmDialog({
+        title: '確認切換模式',
+        message: `確定要切換至${mode === 'auto' ? '自動' : '手動'}模式嗎？`,
+        confirmText: '確認',
+        cancelText: '取消'
+      });
+      
+      if (!confirmed) return;
+      
+      // FR-016: Loading indicator
+      setCommandPending(true);
+      
+      try {
+        // Send command
+        const response = await sendCommand({
+          deviceId,
+          commandType: 'switch_mode',
+          commandPayload: { mode }
+        });
+        
+        // Poll for confirmation (FR-014: max 3s)
+        const confirmed = await pollCommandStatus(response.id, {
+          maxAttempts: 6,
+          interval: 500 // Poll every 500ms
+        });
+        
+        if (confirmed.status === 'confirmed') {
+          toast.success('模式切換成功');
+        } else if (confirmed.status === 'timeout') {
+          toast.error('設備無回應，請檢查連線');
+        }
+      } catch (error) {
+        if (error.response?.status === 404) {
+          // FR-017: Device offline error
+          toast.error('設備目前離線，無法執行遠端控制');
+        } else if (error.response?.status === 403) {
+          toast.error('權限不足，無法控制設備');
+        } else {
+          toast.error('指令傳送失敗，請稍後再試');
+        }
+      } finally {
+        setCommandPending(false);
+      }
+    };
+    
+    return (
+      <div className="control-panel">
+        <Button
+          onClick={() => handleSwitchMode('manual')}
+          disabled={commandPending}
+          loading={commandPending}
+        >
+          切換至手動模式
+        </Button>
+      </div>
+    );
+  }
+  
+  async function pollCommandStatus(
+    commandId: string,
+    options: { maxAttempts: number; interval: number }
+  ): Promise<ControlCommand> {
+    for (let i = 0; i < options.maxAttempts; i++) {
+      const status = await fetch(`/api/control/commands/${commandId}`).then(r => r.json());
+      
+      if (status.status === 'confirmed' || status.status === 'timeout' || status.status === 'failed') {
+        return status;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, options.interval));
+    }
+    
+    throw new Error('Polling timeout');
+  }
+  ```
+  
+  ## Command State Machine
+  
+  ```
+  pending → sent → confirmed ✓
+              ↓
+            timeout ✗
+              ↓
+            failed ✗
+  ```
+  
+  ## Timeout Detection
+  
+  - **Method**: Background worker queries database every 1 second
+  - **Condition**: `sent_at < NOW() - INTERVAL '3 seconds' AND status = 'sent'`
+  - **Action**: Update status to `timeout`, send WebSocket notification
+  
+  ## Permission Matrix
+  
+  | Command Type | Viewer | Operator | Admin |
+  |--------------|--------|----------|-------|
+  | switch_mode | ❌ | ✅ | ✅ |
+  | set_target_temp | ❌ | ✅ | ✅ |
+  | emergency_stop | ❌ | ❌ | ✅ |
+  
+  ## Error Handling
+  
+  | Error Code | HTTP Status | User Message (zh-TW) |
+  |------------|-------------|---------------------|
+  | DEVICE_OFFLINE | 404 | 設備目前離線，無法執行遠端控制 |
+  | DEVICE_IN_AUTO_MODE | 422 | 設備處於自動模式，無法手動設定溫度 |
+  | INSUFFICIENT_PERMISSION | 403 | 權限不足，無法控制設備 |
+  | COMMAND_TIMEOUT | 200 | 設備無回應，請檢查連線 |
+  | INVALID_PARAMETER | 400 | 參數不合法，請檢查輸入值 |

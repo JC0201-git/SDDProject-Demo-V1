@@ -1,0 +1,532 @@
+asyncapi: 2.6.0
+info:
+  title: Heat Pump Real-time Data API
+  version: 1.0.0
+  description: |
+    WebSocket protocol for real-time device data streaming and anomaly alerts.
+    
+    **Connection Flow**:
+    1. Client connects to `ws://localhost:8000/ws/devices/{deviceId}`
+    2. Server validates session token (query parameter or Sec-WebSocket-Protocol header)
+    3. Upon successful connection, server streams real-time data for the specified device
+    4. Client receives data updates (FR-002: <1s latency) and anomaly alerts (FR-009)
+    5. Client can send subscription management messages to optimize bandwidth
+    
+    **Heartbeat**: Server sends ping every 30s, client must respond with pong to keep connection alive (FR-018)
+
+servers:
+  development:
+    url: ws://localhost:8000
+    protocol: ws
+    description: Development WebSocket server
+  production:
+    url: wss://dashboard.example.com
+    protocol: wss
+    description: Production WebSocket server (secure)
+
+channels:
+  /ws/devices/{deviceId}:
+    description: Real-time data stream for a specific device (FR-001, FR-002)
+    parameters:
+      deviceId:
+        description: Device UUID
+        schema:
+          type: string
+          format: uuid
+    bindings:
+      ws:
+        method: GET
+        query:
+          type: object
+          properties:
+            token:
+              type: string
+              description: Session token for authentication
+    subscribe:
+      summary: Receive real-time device data
+      description: |
+        Server streams device data whenever new measurements arrive (push model, FR-001).
+        Updates are sent within 1 second of data arrival (FR-002).
+      message:
+        oneOf:
+          - $ref: '#/components/messages/RealtimeDataUpdate'
+          - $ref: '#/components/messages/AnomalyAlert'
+          - $ref: '#/components/messages/DeviceStatusChange'
+          - $ref: '#/components/messages/Ping'
+    publish:
+      summary: Send client messages
+      description: Client can send subscription preferences or pong responses
+      message:
+        oneOf:
+          - $ref: '#/components/messages/SubscriptionUpdate'
+          - $ref: '#/components/messages/Pong'
+
+  /ws/dashboard:
+    description: Global dashboard data stream (all devices summary, FR-003)
+    bindings:
+      ws:
+        method: GET
+        query:
+          type: object
+          properties:
+            token:
+              type: string
+              description: Session token for authentication
+    subscribe:
+      summary: Receive global dashboard updates
+      description: |
+        Server streams aggregated statistics for all devices (total power, COP, online count).
+        Updates sent every 1 second or when significant changes occur.
+      message:
+        $ref: '#/components/messages/DashboardSummaryUpdate'
+
+components:
+  messages:
+    # ==================== Server → Client ====================
+    RealtimeDataUpdate:
+      name: realtimeDataUpdate
+      title: Real-time Data Update
+      summary: Device measurement data (FR-002)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/RealtimeDataPayload'
+      examples:
+        - name: Normal data
+          summary: Normal device operation data
+          payload:
+            type: "realtime_data"
+            timestamp: "2026-02-17T10:30:45.123Z"
+            deviceId: "550e8400-e29b-41d4-a716-446655440000"
+            data:
+              compressorFrequency: 85.5
+              temperatureExhaust: 65.3
+              temperatureIntake: 25.1
+              temperatureWaterTank: 55.0
+              pressure: 18.2
+              powerKw: 3.5
+              heatOutputKw: 12.8
+              cop: 3.66
+              dataQuality: "normal"
+            metadata:
+              fanSpeed: 1200
+              pumpStatus: "running"
+
+    AnomalyAlert:
+      name: anomalyAlert
+      title: Anomaly Alert
+      summary: Parameter exceeded threshold (FR-009)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AnomalyAlertPayload'
+      examples:
+        - name: Temperature exceeded
+          summary: Exhaust temperature exceeded upper limit
+          payload:
+            type: "anomaly_alert"
+            timestamp: "2026-02-17T10:31:00.456Z"
+            deviceId: "550e8400-e29b-41d4-a716-446655440000"
+            alert:
+              parameterName: "temperature_exhaust"
+              currentValue: 82.5
+              threshold:
+                upperLimit: 80.0
+                lowerLimit: 0.0
+              severity: "high"
+              message: "排氣溫度超出正常範圍"
+
+    DeviceStatusChange:
+      name: deviceStatusChange
+      title: Device Status Change
+      summary: Device online/offline/error status change (FR-018)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DeviceStatusChangePayload'
+      examples:
+        - name: Device offline
+          summary: Device went offline
+          payload:
+            type: "device_status_change"
+            timestamp: "2026-02-17T10:35:12.789Z"
+            deviceId: "550e8400-e29b-41d4-a716-446655440000"
+            status:
+              previous: "running"
+              current: "offline"
+              reason: "No data received for 5 seconds"
+
+    DashboardSummaryUpdate:
+      name: dashboardSummaryUpdate
+      title: Dashboard Summary Update
+      summary: Global statistics for all devices (FR-003)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DashboardSummaryPayload'
+      examples:
+        - name: Summary update
+          payload:
+            type: "dashboard_summary"
+            timestamp: "2026-02-17T10:30:00.000Z"
+            summary:
+              totalDevices: 100
+              onlineDevices: 95
+              offlineDevices: 5
+              runningDevices: 90
+              errorDevices: 0
+              totalPowerKw: 315.8
+              totalHeatOutputKw: 1168.2
+              averageCop: 3.70
+
+    Ping:
+      name: ping
+      title: Heartbeat Ping
+      summary: Server keepalive ping (sent every 30s)
+      contentType: application/json
+      payload:
+        type: object
+        properties:
+          type:
+            type: string
+            const: "ping"
+          timestamp:
+            type: string
+            format: date-time
+
+    # ==================== Client → Server ====================
+    SubscriptionUpdate:
+      name: subscriptionUpdate
+      title: Subscription Update
+      summary: Client updates parameter subscriptions (optimize bandwidth)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SubscriptionUpdatePayload'
+      examples:
+        - name: Subscribe to specific parameters
+          payload:
+            type: "subscription_update"
+            parameters: ["temperature_exhaust", "pressure", "cop"]
+            updateInterval: 1000
+
+    Pong:
+      name: pong
+      title: Heartbeat Pong
+      summary: Client response to ping (keepalive)
+      contentType: application/json
+      payload:
+        type: object
+        properties:
+          type:
+            type: string
+            const: "pong"
+          timestamp:
+            type: string
+            format: date-time
+
+  schemas:
+    RealtimeDataPayload:
+      type: object
+      required: [type, timestamp, deviceId, data]
+      properties:
+        type:
+          type: string
+          const: "realtime_data"
+        timestamp:
+          type: string
+          format: date-time
+          description: Data measurement timestamp (ISO 8601)
+        deviceId:
+          type: string
+          format: uuid
+        data:
+          type: object
+          properties:
+            compressorFrequency:
+              type: number
+              format: float
+              description: Compressor frequency (Hz)
+            temperatureExhaust:
+              type: number
+              format: float
+              description: Exhaust temperature (°C)
+            temperatureIntake:
+              type: number
+              format: float
+              description: Intake temperature (°C)
+            temperatureWaterTank:
+              type: number
+              format: float
+              description: Water tank temperature (°C)
+            pressure:
+              type: number
+              format: float
+              description: Refrigerant pressure (bar)
+            powerKw:
+              type: number
+              format: float
+              description: Instantaneous power consumption (kW)
+            heatOutputKw:
+              type: number
+              format: float
+              description: Instantaneous heat output (kW)
+            cop:
+              type: number
+              format: float
+              description: Coefficient of Performance
+            dataQuality:
+              type: string
+              enum: [normal, anomaly]
+              description: Data quality flag (FR-022)
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional device-specific parameters
+
+    AnomalyAlertPayload:
+      type: object
+      required: [type, timestamp, deviceId, alert]
+      properties:
+        type:
+          type: string
+          const: "anomaly_alert"
+        timestamp:
+          type: string
+          format: date-time
+        deviceId:
+          type: string
+          format: uuid
+        alert:
+          type: object
+          required: [parameterName, currentValue, threshold, severity, message]
+          properties:
+            parameterName:
+              type: string
+              description: Parameter that exceeded threshold
+            currentValue:
+              type: number
+              format: float
+              description: Current measured value
+            threshold:
+              type: object
+              properties:
+                upperLimit:
+                  type: number
+                  format: float
+                lowerLimit:
+                  type: number
+                  format: float
+            severity:
+              type: string
+              enum: [low, medium, high, critical]
+              description: Alert severity level
+            message:
+              type: string
+              description: Human-readable alert message (i18n)
+
+    DeviceStatusChangePayload:
+      type: object
+      required: [type, timestamp, deviceId, status]
+      properties:
+        type:
+          type: string
+          const: "device_status_change"
+        timestamp:
+          type: string
+          format: date-time
+        deviceId:
+          type: string
+          format: uuid
+        status:
+          type: object
+          required: [previous, current]
+          properties:
+            previous:
+              type: string
+              enum: [online, offline, running, stopped, error]
+            current:
+              type: string
+              enum: [online, offline, running, stopped, error]
+            reason:
+              type: string
+              description: Reason for status change
+
+    DashboardSummaryPayload:
+      type: object
+      required: [type, timestamp, summary]
+      properties:
+        type:
+          type: string
+          const: "dashboard_summary"
+        timestamp:
+          type: string
+          format: date-time
+        summary:
+          type: object
+          properties:
+            totalDevices:
+              type: integer
+            onlineDevices:
+              type: integer
+            offlineDevices:
+              type: integer
+            runningDevices:
+              type: integer
+            errorDevices:
+              type: integer
+            totalPowerKw:
+              type: number
+              format: float
+            totalHeatOutputKw:
+              type: number
+              format: float
+            averageCop:
+              type: number
+              format: float
+
+    SubscriptionUpdatePayload:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: "subscription_update"
+        parameters:
+          type: array
+          items:
+            type: string
+          description: List of parameters to receive (empty = all parameters)
+          example: ["temperature_exhaust", "pressure", "cop"]
+        updateInterval:
+          type: integer
+          description: Minimum interval between updates (ms)
+          default: 1000
+          minimum: 500
+          maximum: 10000
+
+  securitySchemes:
+    sessionToken:
+      type: httpApiKey
+      name: token
+      in: query
+      description: Session token obtained from /api/auth/login (passed as query parameter or Sec-WebSocket-Protocol header)
+
+# ==================== Implementation Notes ====================
+x-implementation-notes: |
+  ## Backend Implementation (FastAPI)
+  
+  ```python
+  from fastapi import WebSocket, WebSocketDisconnect
+  from datetime import datetime
+  import json
+  
+  @app.websocket("/ws/devices/{device_id}")
+  async def websocket_device_data(websocket: WebSocket, device_id: str):
+      # 1. Validate session token
+      token = websocket.query_params.get("token")
+      user = await validate_session_token(token)
+      if not user:
+          await websocket.close(code=1008, reason="Unauthorized")
+          return
+      
+      # 2. Accept connection
+      await websocket.accept()
+      
+      # 3. Subscribe to device data stream
+      queue = await subscribe_device_data(device_id)
+      
+      # 4. Stream data
+      try:
+          while True:
+              # Receive data from device message queue
+              data = await queue.get()
+              
+              # Send to client
+              await websocket.send_json({
+                  "type": "realtime_data",
+                  "timestamp": datetime.utcnow().isoformat() + "Z",
+                  "deviceId": device_id,
+                  "data": data
+              })
+              
+              # Heartbeat (every 30s)
+              if time_since_last_ping() > 30:
+                  await websocket.send_json({"type": "ping", "timestamp": datetime.utcnow().isoformat() + "Z"})
+              
+      except WebSocketDisconnect:
+          await unsubscribe_device_data(device_id, queue)
+  ```
+  
+  ## Frontend Implementation (React)
+  
+  ```typescript
+  function useDeviceRealtime(deviceId: string) {
+    const [data, setData] = useState<RealtimeData | null>(null);
+    const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+    const { token } = useAuth();
+    
+    useEffect(() => {
+      const ws = new WebSocket(`ws://localhost:8000/ws/devices/${deviceId}?token=${token}`);
+      
+      ws.onopen = () => setStatus('connected');
+      
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        
+        switch (message.type) {
+          case 'realtime_data':
+            setData(message.data);
+            break;
+          case 'anomaly_alert':
+            toast.error(message.alert.message);
+            break;
+          case 'device_status_change':
+            if (message.status.current === 'offline') {
+              toast.warning('設備已離線');
+            }
+            break;
+          case 'ping':
+            ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+            break;
+        }
+      };
+      
+      ws.onerror = () => {
+        setStatus('disconnected');
+        toast.error('WebSocket 連線錯誤');
+      };
+      
+      ws.onclose = () => {
+        setStatus('disconnected');
+        // Auto-reconnect after 2s
+        setTimeout(() => {
+          // Reconnect logic
+        }, 2000);
+      };
+      
+      return () => ws.close();
+    }, [deviceId, token]);
+    
+    return { data, status };
+  }
+  ```
+  
+  ## Connection Lifecycle
+  
+  1. **Connection**: Client connects with session token
+  2. **Authentication**: Server validates token, closes if invalid
+  3. **Streaming**: Server pushes data updates, client receives and renders
+  4. **Heartbeat**: Server pings every 30s, client responds with pong
+  5. **Disconnection**: Client closes gracefully or server detects timeout
+  6. **Reconnection**: Client implements exponential backoff auto-reconnect
+  
+  ## Performance Considerations
+  
+  - **Bandwidth**: For 100 devices × 1 update/sec × 500 bytes = 50 KB/s = 400 Kbps (acceptable)
+  - **Connection Limits**: FastAPI (Uvicorn) can handle 10,000+ concurrent WebSocket connections
+  - **Message Queue**: Use Redis Pub/Sub or RabbitMQ for device → server data ingestion
+  
+  ## Error Handling
+  
+  | Error | Close Code | Reason |
+  |-------|------------|--------|
+  | Unauthorized | 1008 | Invalid or expired token |
+  | Device not found | 1003 | Device ID does not exist |
+  | Permission denied | 1008 | User role cannot access device |
+  | Server error | 1011 | Internal server error |

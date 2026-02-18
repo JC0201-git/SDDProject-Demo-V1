@@ -1,0 +1,910 @@
+openapi: 3.0.3
+info:
+  title: Heat Pump Device API
+  description: RESTful API for device management, user authentication, and configuration
+  version: 1.0.0
+  contact:
+    name: Heat Pump Dashboard Team
+    
+servers:
+  - url: http://localhost:8000/api
+    description: Development server
+  - url: https://dashboard.example.com/api
+    description: Production server
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================== Authentication ====================
+  /auth/login:
+    post:
+      summary: User login
+      description: 使用者登入，取得 session token (FR-023)
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/logout:
+    post:
+      summary: User logout
+      description: 登出並清除 session (FR-027)
+      tags: [Authentication]
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/session:
+    get:
+      summary: Validate session
+      description: 檢查當前 session 是否有效，更新 session 過期時間 (FR-026)
+      tags: [Authentication]
+      responses:
+        '200':
+          description: Session valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== Devices ====================
+  /devices:
+    get:
+      summary: List all devices
+      description: 取得所有設備清單 (FR-003, FR-004)
+      tags: [Devices]
+      parameters:
+        - name: status
+          in: query
+          description: Filter by device status
+          schema:
+            type: string
+            enum: [online, offline, running, stopped, error]
+        - name: mode
+          in: query
+          description: Filter by device mode
+          schema:
+            type: string
+            enum: [auto, manual]
+      responses:
+        '200':
+          description: Device list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create new device
+      description: 新增設備（僅 admin）
+      tags: [Devices]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreate'
+      responses:
+        '201':
+          description: Device created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /devices/summary:
+    get:
+      summary: Get devices summary
+      description: 取得設備總覽統計 (FR-003)
+      tags: [Devices]
+      responses:
+        '200':
+          description: Summary retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/{deviceId}:
+    get:
+      summary: Get device detail
+      description: 取得單一設備詳細資訊 (FR-005)
+      tags: [Devices]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Device retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      summary: Update device
+      description: 更新設備資訊（僅 admin）
+      tags: [Devices]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreate'
+      responses:
+        '200':
+          description: Device updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    delete:
+      summary: Delete device
+      description: 刪除設備（僅 admin）
+      tags: [Devices]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '204':
+          description: Device deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /devices/{deviceId}/components:
+    get:
+      summary: Get device components
+      description: 取得設備子元件清單 (FR-006)
+      tags: [Devices]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Components retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Component'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== Historical Data ====================
+  /devices/{deviceId}/historical:
+    get:
+      summary: Query historical data
+      description: 查詢歷史趨勢資料 (FR-007, FR-008)
+      tags: [Historical Data]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: start_time
+          in: query
+          required: true
+          description: Start timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          required: true
+          description: End timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: interval
+          in: query
+          required: false
+          description: Data aggregation interval
+          schema:
+            type: string
+            enum: [1min, 1hour, 1day]
+            default: 1min
+        - name: parameters
+          in: query
+          required: false
+          description: Comma-separated parameter names to query
+          schema:
+            type: string
+            example: "temperature_exhaust,pressure,cop"
+      responses:
+        '200':
+          description: Historical data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HistoricalData'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== Thresholds ====================
+  /thresholds/defaults:
+    get:
+      summary: Get default thresholds
+      description: 取得系統預設閾值 (FR-010)
+      tags: [Thresholds]
+      responses:
+        '200':
+          description: Default thresholds retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DefaultThreshold'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/{deviceId}/thresholds:
+    get:
+      summary: Get device thresholds
+      description: 取得設備閾值配置 (FR-011)
+      tags: [Thresholds]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Thresholds retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ThresholdConfig'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      summary: Update device thresholds
+      description: 更新設備閾值（僅 admin，FR-011）
+      tags: [Thresholds]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/ThresholdConfigUpdate'
+      responses:
+        '200':
+          description: Thresholds updated successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ThresholdConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ==================== Operation Logs ====================
+  /logs/operations:
+    get:
+      summary: Query operation logs
+      description: 查詢操作紀錄 (FR-019)
+      tags: [Logs]
+      parameters:
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          schema:
+            type: string
+            format: uuid
+        - name: device_id
+          in: query
+          description: Filter by device ID
+          schema:
+            type: string
+            format: uuid
+        - name: operation_type
+          in: query
+          description: Filter by operation type
+          schema:
+            type: string
+        - name: start_time
+          in: query
+          description: Start timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          description: End timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OperationLog'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== Users ====================
+  /users:
+    get:
+      summary: List users
+      description: 取得使用者清單（僅 admin）
+      tags: [Users]
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Create user
+      description: 新增使用者（僅 admin）
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Session token obtained from /auth/login
+
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      description: Device UUID
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # ==================== Authentication ====================
+    UserLogin:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 8
+
+    UserSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    UserRole:
+      type: string
+      enum: [viewer, operator, admin]
+      description: |
+        - viewer: 僅查看
+        - operator: 可控制設備
+        - admin: 完整權限
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+        isActive:
+          type: boolean
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    UserCreate:
+      type: object
+      required: [username, password, role]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 8
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    # ==================== Devices ====================
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceCode:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+        mode:
+          $ref: '#/components/schemas/DeviceMode'
+        currentCompressorFrequency:
+          type: number
+          format: float
+          nullable: true
+        currentTemperatureExhaust:
+          type: number
+          format: float
+          nullable: true
+        currentTemperatureIntake:
+          type: number
+          format: float
+          nullable: true
+        currentPressure:
+          type: number
+          format: float
+          nullable: true
+        currentTemperatureWaterTank:
+          type: number
+          format: float
+          nullable: true
+        currentTargetTemperature:
+          type: number
+          format: float
+          nullable: true
+        currentPowerKw:
+          type: number
+          format: float
+          nullable: true
+        currentHeatOutputKw:
+          type: number
+          format: float
+          nullable: true
+        currentCop:
+          type: number
+          format: float
+          nullable: true
+        lastDataAt:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeviceStatus:
+      type: string
+      enum: [online, offline, running, stopped, error]
+
+    DeviceMode:
+      type: string
+      enum: [auto, manual]
+
+    DeviceCreate:
+      type: object
+      required: [deviceCode, name]
+      properties:
+        deviceCode:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+          nullable: true
+        mode:
+          $ref: '#/components/schemas/DeviceMode'
+
+    DeviceSummary:
+      type: object
+      properties:
+        totalDevices:
+          type: integer
+        onlineDevices:
+          type: integer
+        offlineDevices:
+          type: integer
+        runningDevices:
+          type: integer
+        errorDevices:
+          type: integer
+        totalPowerKw:
+          type: number
+          format: float
+        totalHeatOutputKw:
+          type: number
+          format: float
+        averageCop:
+          type: number
+          format: float
+
+    Component:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: uuid
+        componentCode:
+          type: string
+        componentType:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/ComponentStatus'
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ComponentStatus:
+      type: string
+      enum: [running, stopped, error]
+
+    # ==================== Historical Data ====================
+    HistoricalData:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        deviceId:
+          type: string
+          format: uuid
+        avgCompressorFrequency:
+          type: number
+          format: float
+          nullable: true
+        avgTemperatureExhaust:
+          type: number
+          format: float
+          nullable: true
+        avgTemperatureIntake:
+          type: number
+          format: float
+          nullable: true
+        avgTemperatureWaterTank:
+          type: number
+          format: float
+          nullable: true
+        avgPressure:
+          type: number
+          format: float
+          nullable: true
+        avgPowerKw:
+          type: number
+          format: float
+          nullable: true
+        avgHeatOutputKw:
+          type: number
+          format: float
+          nullable: true
+        avgCop:
+          type: number
+          format: float
+          nullable: true
+        maxTemperatureExhaust:
+          type: number
+          format: float
+          nullable: true
+        minTemperatureExhaust:
+          type: number
+          format: float
+          nullable: true
+
+    # ==================== Thresholds ====================
+    DefaultThreshold:
+      type: object
+      properties:
+        parameterName:
+          type: string
+        upperLimit:
+          type: number
+          format: float
+        lowerLimit:
+          type: number
+          format: float
+        description:
+          type: string
+
+    ThresholdConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: uuid
+        parameterName:
+          type: string
+        upperLimit:
+          type: number
+          format: float
+          nullable: true
+        lowerLimit:
+          type: number
+          format: float
+          nullable: true
+        useDefault:
+          type: boolean
+        updatedBy:
+          type: string
+          format: uuid
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ThresholdConfigUpdate:
+      type: object
+      required: [parameterName, upperLimit, lowerLimit]
+      properties:
+        parameterName:
+          type: string
+        upperLimit:
+          type: number
+          format: float
+        lowerLimit:
+          type: number
+          format: float
+        useDefault:
+          type: boolean
+          default: false
+
+    # ==================== Operation Logs ====================
+    OperationLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: uuid
+          nullable: true
+        operationType:
+          type: string
+        operationDetail:
+          type: object
+          additionalProperties: true
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # ==================== Error Responses ====================
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type/code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Bad request - Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "VALIDATION_ERROR"
+            message: "Invalid input parameters"
+
+    Unauthorized:
+      description: Unauthorized - Invalid or expired session token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "UNAUTHORIZED"
+            message: "Session expired or invalid token"
+
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "FORBIDDEN"
+            message: "User role 'viewer' cannot perform this action"
+
+    NotFound:
+      description: Not found - Resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "NOT_FOUND"
+            message: "Device not found"

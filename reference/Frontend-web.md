@@ -122,14 +122,14 @@ themeColors = {
 
 **使用方式**：
 - 元件中使用 `withTranslation` HOC 或 `useTranslation` Hook
-- 語言選擇持久化至 `localStorage['myems_web_ui_language']`
+- 語言選擇持久化至 `localStorage['demov1_web_ui_language']`
 - `Main.js` 中同步 `i18n.changeLanguage(language)` 與 Context
 
 ### 2.5 圖表與視覺化
 
 **主要圖表庫：ECharts**
 - 套件：`echarts@5.2.2` + `echarts-for-react@3.0.2`
-- 元件路徑：`src/components/MyEMS/common/`
+- 元件路徑：`src/components/DemoV1/common/`
 - 圖表類型：
 
 | 元件 | 說明 |
