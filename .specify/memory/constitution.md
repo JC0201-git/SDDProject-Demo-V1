@@ -1,24 +1,29 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version Change: 1.0.0 → 1.1.0
-Type: MINOR (New principle added)
+Version Change: 1.1.0 → 1.1.1
+Type: PATCH (Format corrections and version consistency fix)
 
 Modified Principles: N/A
-Added Sections:
-  - Core Principles: V. Documentation Language Standards (Traditional Chinese requirement)
-
+Added Sections: N/A
 Removed Sections: N/A
 
+Corrections Made:
+  - Fixed version number inconsistency in footer (was 1.0.0, corrected to 1.1.0, then bumped to 1.1.1)
+  - Removed extraneous "1" from Governance section heading
+  - Updated Last Amended date to 2026-02-19
+
 Templates Requiring Updates:
-  ✅ plan-template.md - No changes needed (language requirement is content-level, not structural)
-  ✅ spec-template.md - No changes needed (specs will be written in zh-TW per new principle)
-  ✅ tasks-template.md - No changes needed (tasks reference specs which will be in zh-TW)
+  ✅ plan-template.md - Aligned with constitution, no changes needed
+  ✅ spec-template.md - Aligned with constitution (zh-TW language requirement understood)
+  ✅ tasks-template.md - Aligned with constitution, no changes needed
+
+Previous Amendment (v1.1.0, 2026-02-15):
+  - Added Core Principles: V. Documentation Language Standards (Traditional Chinese requirement)
 
 Follow-up TODOs: 
-  - Ensure all future specifications are created in Traditional Chinese (zh-TW)
-  - Update any existing user-facing documentation to Traditional Chinese
-  - Add language validation to documentation review checklist
+  - Continue ensuring all specifications are created in Traditional Chinese (zh-TW)
+  - Validate existing user-facing documentation is in Traditional Chinese
 -->
 
 # Demo-v1 Frontend Constitution
@@ -120,7 +125,7 @@ Follow-up TODOs:
 - Breaking changes to shared components MUST be documented in migration guide
 
 ## Governance
-1
+
 This constitution supersedes all other frontend development practices. Any deviations from the principles outlined above MUST be justified during the architectural review phase and documented in the feature specification.
 
 **Amendment Process**:
@@ -133,4 +138,4 @@ This constitution supersedes all other frontend development practices. Any devia
 - Quarterly audits will assess adherence and identify technical debt
 - Violations must be remediated within one sprint cycle unless explicitly waived
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-15 | **Last Amended**: 2026-02-15
+**Version**: 1.1.1 | **Ratified**: 2026-02-15 | **Last Amended**: 2026-02-19
