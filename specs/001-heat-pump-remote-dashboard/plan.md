@@ -1,208 +1,217 @@
-# Implementation Plan: 熱泵遠端管理儀表板（前端）
+# Implementation Plan: 熱泵遠端管理儀表板
 
-**Branch**: `001-heat-pump-remote-dashboard` | **Date**: 2026-02-17 | **Spec**: [spec.md](spec.md)
+**Branch**: `001-heat-pump-remote-dashboard` | **Date**: 2026-02-18 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/001-heat-pump-remote-dashboard/spec.md`
+
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-建置熱泵設備遠端監控前端介面，使管理人員透過網頁即時掌握設備狀態、查看運作趨勢、執行遠端控制。採用 React 16.13.1 + React-Bootstrap 2.7.0，整合 WebSocket 即時通訊、React Query 狀態管理、ECharts 圖表視覺化。支援響應式設計（桌機/平板/手機）、三級權限控制（檢視者/操作者/管理者）、及無障礙測試。
+建立一個網頁儀表板系統，讓管理人員能遠端監控熱泵設備的即時運作狀態、查看動態流程圖與歷史趨勢、並執行遠端控制指令。系統需接收設備主動推送的即時資料（<1秒延遲更新），支援100台以上設備同時連線，保留30天歷史資料供趨勢分析，並提供三級權限控制（檢視者/操作者/管理者）。技術方案採用前後端分離架構，後端處理即時數據流與控制指令，前端提供響應式介面支援跨裝置使用。
 
 ## Technical Context
 
-**Language/Version**: JavaScript (ES2021), TypeScript 4.9+  
-**Frontend Framework**: React 16.13.1 (Create React App)  
-**UI Library**: React-Bootstrap 2.7.0 (Bootstrap 4.6)  
-**State Management**: React Query 3.39.3 (Server Cache) + Context API (Global State)  
-**Real-time Protocol**: WebSocket (HTML5 標準)  
-**Charts**: ECharts 5.2.2 + echarts-for-react 3.0.2  
-**i18n**: react-i18next 11.18+ (支援繁體中文等 15+ 語言)  
-**Testing**: Jest 29+ (單元測試) + React Testing Library 14+ (元件測試) + Cypress 13+ (E2E 測試)  
-**Target Platform**: 現代瀏覽器 (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)  
-**Project Type**: Web Frontend (單頁應用程式)  
+**Language/Version**: 
+- Frontend: React 16.13.1+ (might upgrade to 18.x - NEEDS CLARIFICATION)
+- Backend: NEEDS CLARIFICATION (Node.js/Python/Go for WebSocket support)
+
+**Primary Dependencies**: 
+- Frontend: React, Context API, ECharts, react-hook-form, i18next, Bootstrap/Rsuite
+- Backend: NEEDS CLARIFICATION (WebSocket/SSE library, REST framework)
+- Real-time Communication: NEEDS CLARIFICATION (WebSocket vs Server-Sent Events)
+
+**Storage**: 
+- Time-series database for 30-day historical data - NEEDS CLARIFICATION (PostgreSQL with TimescaleDB extension vs InfluxDB vs TimescaleDB)
+- User/device metadata - NEEDS CLARIFICATION (PostgreSQL vs MongoDB)
+- Session storage - NEEDS CLARIFICATION (Redis for sessions?)
+
+**Testing**: 
+- Frontend: NEEDS CLARIFICATION (Jest + React Testing Library recommended)
+- Backend: NEEDS CLARIFICATION (depends on language choice)
+- E2E: NEEDS CLARIFICATION (Playwright/Cypress for critical flows)
+
+**Target Platform**: Web browsers (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
+
+**Project Type**: Web (frontend + backend)
+
 **Performance Goals**: 
-- 首次載入 < 3 秒
-- 資料更新延遲 < 1 秒
-- 圖表渲染 > 30 FPS
-- 支援 100+ 設備同時監控
+- Real-time data update latency <1s from device push to UI display
+- Remote control command response <3s (network dependent)
+- Dashboard initial load <3s
+- Support 100+ concurrent device connections
+- 30-day historical data query <2s
 
 **Constraints**: 
-- 相容 React 16（不使用 Concurrent Mode）
-- 觸控按鈕 ≥ 44x44px（無障礙要求）
-- 支援行動網路環境（自動重連機制）
+- Must handle device offline/reconnection gracefully
+- Must prevent stale data display (<5s timeout warning)
+- Must work on mobile/tablet/desktop (responsive design)
+- Must support idle timeout (30min) with session management
+- Must handle 100+ devices without performance degradation
 
 **Scale/Scope**: 
-- 10-15 個前端頁面/元件
-- 3 個使用者角色
-- 100+ 台設備並行監控
-- 30 天歷史資料視覺化
+- 100+ heat pump devices monitored simultaneously
+- 3-tier user permission system (viewer/operator/admin)
+- Real-time monitoring + historical trends + remote control
+- 30-day data retention window
+- Multiple dashboard views (overview + device detail + trends)
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-### ✅ Passed Gates
+### Frontend Constitution Compliance
 
-1. **Data Consumption**: 
-   - ✅ 使用 TypeScript interfaces 作為 API 型別定義 SSOT
-   - ✅ 實作統一 request interceptor（HeatPumpService.ts）
-   - ✅ 標準化錯誤處理機制（4xx/5xx status codes → toast notifications）
+| Principle | Status | Implementation Requirements |
+|-----------|--------|----------------------------|
+| **I. Data Consumption** | ✓ PASS | Must implement unified request interceptors for device API, define TypeScript interfaces for all device data/control APIs, implement standardized error handling for network failures and device offline scenarios |
+| **II. State Management** | ✓ PASS | Must distinguish: (1) Global State - user session, permissions, theme; (2) Local State - UI toggles, form inputs, dashboard filters; (3) Server Cache - real-time device data, historical trends. Must use React Query/SWR for device data caching and real-time updates |
+| **III. Component Architecture** | ✓ PASS | Must follow Container-Presenter pattern: Dashboard pages as containers (data fetching), Device cards/charts/controls as presentational components (props-driven). Each component must have single responsibility |
+| **IV. Defensive Development** | ✓ PASS | Critical for real-time system: Must implement skeleton screens for all loading states, empty states for no devices, error boundaries for component failures, graceful degradation for device offline, retry mechanisms for failed control commands, timeout warnings for stale data |
+| **V. Documentation Language** | ✓ PASS | Feature specification already in Traditional Chinese |
 
-2. **State Management**: 
-   - ✅ 明確三層狀態分類：
-     - Server Cache: React Query（設備資料、歷史趨勢）
-     - Global State: Context API（使用者 session、權限）
-     - Local State: useState（UI 對話框、表單）
-   - ✅ 單向資料流（unidirectional data flow）
+**Gate Status**: ✅ **ALL GATES PASS** - No constitutional violations. All principles are compatible with the feature requirements and will be implemented during development.
 
-3. **Component Architecture**: 
-   - ✅ 遵循 Container-Presenter 模式
-     - Pages（DeviceDashboard, DeviceDetail）→ Container
-     - Components（DeviceStatusCard, TrendChart）→ Presenter
-   - ✅ 元件職責單一，可重用
+**Notes**: 
+- The real-time nature of this feature makes Defensive Development especially critical - must handle network interruptions, device failures, and data staleness gracefully
+- Server Cache management is complex due to real-time data streams - React Query's WebSocket integration or manual cache invalidation strategies needed
 
-4. **Defensive Development**: 
-   - ✅ Skeleton screens 處理 loading 狀態
-   - ✅ Empty State 處理無資料情境
-   - ✅ 網路錯誤提示與重試機制
-   - ✅ WebSocket 斷線自動重連（exponential backoff）
+### Post-Design Re-evaluation (Phase 1 Complete)
 
-5. **Documentation Language**: 
-   - ✅ 所有規格文件使用繁體中文
-   - ✅ 程式碼註解使用英文或繁體中文
-   - ✅ API/介面名稱使用英文
+**Re-evaluation Date**: 2026年2月18日  
+**Artifacts Reviewed**: data-model.md, contracts/, quickstart.md
+
+| Principle | Phase 1 Design Verification | Status |
+|-----------|----------------------------|--------|
+| **I. Data Consumption** | ✓ API contracts define comprehensive REST + WebSocket endpoints with TypeScript schemas. Quickstart demonstrates unified axios interceptors and error handling patterns | ✅ MAINTAINED |
+| **II. State Management** | ✓ Project structure clearly separates Global State (Context API), Server Cache (React Query hooks: useDeviceData, useRealtime), and Local State (component useState). Documented in quickstart.md | ✅ MAINTAINED |
+| **III. Component Architecture** | ✓ Directory structure enforces Container-Presenter separation: pages/ (containers) vs components/ (presentational). All example code follows single responsibility principle | ✅ MAINTAINED |
+| **IV. Defensive Development** | ✓ Quickstart includes LoadingSkeleton, ErrorMessage, OfflineIndicator components. All API call examples include error handling, retry logic, and timeout management | ✅ MAINTAINED |
+| **V. Documentation Language** | ✓ All Phase 0 + Phase 1 documentation (research.md, data-model.md, quickstart.md) written in Traditional Chinese | ✅ MAINTAINED |
+
+**Final Gate Status**: ✅ **ALL GATES MAINTAINED** - Design phase has successfully incorporated all constitutional principles. Ready for Phase 2 (Task Breakdown).
+
+**Design Highlights**:
+- WebSocket architecture (Socket.io) with automatic reconnection aligns with Defensive Development requirements
+- React Query integration provides robust Server Cache management with automatic invalidation
+- Comprehensive error handling patterns demonstrated in all code examples
+- Clear architectural boundaries maintained throughout data model and API contracts
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/001-heat-pump-remote-dashboard/
-├── plan.md              # 本檔案（實作計畫）
-├── spec.md              # 功能規格
-├── research.md          # 技術選型研究（前端）
-├── data-model.md        # 資料模型（TypeScript interfaces）
-├── quickstart.md        # 開發指南
-└── contracts/           # API 契約（OpenAPI）
-    ├── device-api.yaml
-    ├── control-api.yaml
-    └── realtime-api.yaml
+specs/[###-feature]/
+├── plan.md              # This file (/speckit.plan command output)
+├── research.md          # Phase 0 output (/speckit.plan command)
+├── data-model.md        # Phase 1 output (/speckit.plan command)
+├── quickstart.md        # Phase 1 output (/speckit.plan command)
+├── contracts/           # Phase 1 output (/speckit.plan command)
+└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
-### Source Code (frontend)
+### Source Code (repository root)
 
 ```text
-Demo-v1-web/
-├── public/
-│   ├── index.html
-│   └── locales/                  # i18n 翻譯檔
-│       ├── zh-TW/
-│       ├── en/
-│       └── zh-CN/
+backend/
+├── src/
+│   ├── models/
+│   │   ├── device.js            # Device entity model
+│   │   ├── user.js              # User entity model
+│   │   ├── component.js         # Component entity model
+│   │   └── threshold.js         # Threshold configuration model
+│   ├── services/
+│   │   ├── device-service.js    # Device data management
+│   │   ├── realtime-service.js  # WebSocket/SSE real-time data handling
+│   │   ├── control-service.js   # Remote control command handling
+│   │   ├── auth-service.js      # Authentication & session management
+│   │   └── history-service.js   # Historical data queries
+│   ├── api/
+│   │   ├── routes/
+│   │   │   ├── device.js        # Device CRUD endpoints
+│   │   │   ├── realtime.js      # Real-time data streaming endpoints
+│   │   │   ├── control.js       # Control command endpoints
+│   │   │   └── auth.js          # Authentication endpoints
+│   │   ├── middleware/
+│   │   │   ├── auth.js          # JWT validation & permission check
+│   │   │   └── error-handler.js # Unified error handling
+│   │   └── validators/          # Request validation schemas
+│   ├── db/
+│   │   ├── migrations/          # Database schema migrations
+│   │   └── connection.js        # Database connection pooling
+│   └── config/
+│       ├── database.js          # DB configuration
+│       └── server.js            # Server configuration
+├── tests/
+│   ├── unit/                    # Service & model unit tests
+│   ├── integration/             # API endpoint integration tests
+│   └── fixtures/                # Test data fixtures
+└── package.json
+
+frontend/
 ├── src/
 │   ├── components/
-│   │   └── DemoV1/
-│   │       ├── common/           # 共用元件 (from Frontend-web.md)
-│   │       └── HeatPump/         # NEW - 本功能元件
-│   │           ├── DeviceStatusCard.js      # 設備狀態卡片
-│   │           ├── DynamicFlowDiagram.js    # 動態流程圖
-│   │           ├── ControlPanel.js          # 控制面板
-│   │           ├── TrendChart.js            # 趨勢圖表
-│   │           └── ComponentStatus.js       # 元件狀態清單
+│   │   ├── dashboard/
+│   │   │   ├── DeviceOverview.jsx       # Presentational: device summary cards
+│   │   │   ├── DeviceList.jsx           # Presentational: device list with status
+│   │   │   ├── DeviceStatusIndicator.jsx # Presentational: status light (red/green/gray)
+│   │   │   └── GlobalMetrics.jsx        # Presentational: total power/COP display
+│   │   ├── device/
+│   │   │   ├── DeviceFlowDiagram.jsx    # Presentational: animated flow diagram
+│   │   │   ├── ComponentStatus.jsx      # Presentational: component list display
+│   │   │   ├── ParameterCard.jsx        # Presentational: single parameter display
+│   │   │   └── TrendChart.jsx           # Presentational: ECharts trend visualization
+│   │   ├── control/
+│   │   │   ├── ModeSwitch.jsx           # Presentational: auto/manual mode toggle
+│   │   │   ├── ParameterInput.jsx       # Presentational: target parameter input
+│   │   │   └── ConfirmDialog.jsx        # Presentational: confirmation modal
+│   │   ├── common/
+│   │   │   ├── LoadingSkeleton.jsx      # Presentational: loading state
+│   │   │   ├── EmptyState.jsx           # Presentational: no data state
+│   │   │   ├── ErrorMessage.jsx         # Presentational: error display
+│   │   │   └── OfflineIndicator.jsx     # Presentational: device offline banner
+│   │   └── layout/
+│   │       ├── Header.jsx               # Presentational: top navigation
+│   │       ├── Sidebar.jsx              # Presentational: device selection sidebar
+│   │       └── ResponsiveContainer.jsx  # Presentational: responsive layout wrapper
 │   ├── pages/
-│   │   └── DemoV1/
-│   │       └── HeatPump/         # NEW - 本功能頁面
-│   │           ├── Dashboard.js             # 全域儀表板
-│   │           ├── DeviceDetail.js         # 設備詳細頁
-│   │           └── RemoteControl.js        # 遠端控制頁
+│   │   ├── DashboardPage.jsx            # Container: global dashboard orchestration
+│   │   ├── DeviceDetailPage.jsx         # Container: single device detail orchestration
+│   │   ├── TrendsPage.jsx               # Container: historical trends orchestration
+│   │   └── LoginPage.jsx                # Container: authentication flow
 │   ├── services/
-│   │   └── HeatPumpService.ts    # NEW - API client (TypeScript)
-│   ├── context/
-│   │   ├── UserContext.tsx       # 使用者 session (Global State)
-│   │   └── PermissionContext.tsx # 權限檢查
+│   │   ├── api/
+│   │   │   ├── device-api.js            # Device API calls with TypeScript interfaces
+│   │   │   ├── control-api.js           # Control API calls
+│   │   │   ├── history-api.js           # Historical data API calls
+│   │   │   ├── auth-api.js              # Authentication API calls
+│   │   │   ├── interceptors.js          # Unified request/response interceptors
+│   │   │   └── error-handler.js         # API error handling logic
+│   │   ├── websocket/
+│   │   │   └── realtime-connection.js   # WebSocket connection management
+│   │   └── utils/
+│   │       ├── data-validator.js        # Data anomaly detection
+│   │       └── retry-logic.js           # Exponential backoff retry
 │   ├── hooks/
-│   │   ├── useDeviceRealtime.ts  # WebSocket 即時資料
-│   │   ├── useDeviceControl.ts   # 控制指令
-│   │   └── usePermission.ts      # 權限檢查 hook
-│   ├── types/
-│   │   └── heatpump.ts           # TypeScript 介面定義
-│   └── App.js
+│   │   ├── useDeviceData.js             # React Query hook for device data
+│   │   ├── useRealtime.js               # Hook for WebSocket real-time data
+│   │   ├── useControlCommand.js         # Hook for control command mutation
+│   │   └── useAuth.js                   # Hook for authentication state
+│   ├── context/
+│   │   ├── AppContext.js                # Global: theme, layout, language
+│   │   └── AuthContext.js               # Global: user session, permissions
+│   ├── config/
+│   │   └── api-config.js                # API base URL, timeout settings
+│   └── App.jsx                          # Root component with routing
 ├── tests/
-│   ├── components/               # 元件單元測試
-│   ├── integration/              # Cypress E2E 測試
-│   └── hooks/                   # Custom hooks 測試
-├── package.json
-├── tsconfig.json
-└── cypress.config.js
+│   ├── unit/                            # Component unit tests (Jest + RTL)
+│   ├── integration/                     # Page integration tests
+│   └── e2e/                             # Critical user journey E2E tests
+└── package.json
 ```
 
-**Structure Decision**: 選用 Web Frontend 結構。專案僅實作前端介面，後端 API 假設由其他團隊提供（參考 contracts/ 定義）。元件置於 `src/components/DemoV1/HeatPump/`，遵循現有專案命名慣例（Frontend-web.md 已定義 `DemoV1/common/` 路徑）。
-
-## Implementation Phases
-
-### Phase 0: Research ✅ (Completed)
-- ✅ 確認 React 16.13.1 + React-Bootstrap 技術棧
-- ✅ 決定狀態管理策略（React Query + Context API）
-- ✅ 研究 WebSocket 即時通訊實作
-- ✅ 規劃測試策略（Jest + RTL + Cypress）
-
-### Phase 1: Design ✅ (Completed)
-- ✅ 定義 TypeScript 介面（data-model.md）
-- ✅ 設計 API 契約（contracts/*.yaml）
-- ✅ 規劃元件架構（Container-Presenter 模式）
-- ✅ 產出 quickstart.md 開發指南
-
-### Phase 2: Implementation (Next)
-- 📝 實作核心元件（DeviceStatusCard, TrendChart, ControlPanel）
-- 📝 實作頁面（Dashboard, DeviceDetail, RemoteControl）
-- 📝 整合 WebSocket 即時資料
-- 📝 實作權限控制（PermissionContext）
-- 📝 撰寫單元測試（85% coverage target）
-- 📝 撰寫 E2E 測試（Cypress）
-- 📝 無障礙測試（axe-core）
-
-### Phase 3: Integration & Testing
-- 📝 整合後端 API（依 contracts/ 定義）
-- 📝 效能測試（100+ 設備載入測試）
-- 📝 跨瀏覽器測試
-- 📝 響應式設計測試（桌機/平板/手機）
-
----
+**Structure Decision**: Web application with frontend + backend separation (Option 2). The frontend follows Container-Presenter pattern with clear separation between pages (containers) that handle data fetching and components (presentational) that receive props. The backend follows service layer pattern with separate concerns for real-time data streaming, control commands, and historical queries. This structure supports the real-time requirements while maintaining testability and maintainability.
 
 ## Complexity Tracking
 
-本專案無 Constitution 違反項目，所有設計符合前端開發準則。
-
----
-
-## Risks and Mitigation
-
-| Risk | Impact | Likelihood | Mitigation |
-|------|--------|------------|------------|
-| WebSocket 連線不穩定（行動網路） | 高 | 中 | 自動重連機制 + 連線狀態視覺回饋 |
-| React 16 限制（無 Concurrent Mode） | 低 | 中 | 使用 React Query 優化渲染效能 |
-| 100+ 設備導致頁面卡頓 | 中 | 低 | 虛擬滾動 + 分頁載入 |
-| 圖表渲染效能問題 | 中 | 低 | ECharts 降採樣 + 按需載入 |
-
----
-
-## Success Criteria
-
-- ✅ 所有 P1 使用者故事通過驗收測試
-- ✅ 程式碼覆蓋率 ≥ 85%
-- ✅ 無障礙測試通過Lighthouse audit score ≥ 90
-- ✅ 響應式設計通過不同裝置測試
-- ✅ 即時資料延遲 < 1 秒
-- ✅ 100 台設備同時監控無效能問題
-
----
-
-## Next Steps
-
-1. ✅ **Phase 0: Research** - Complete
-2. ✅ **Phase 1: Design** - Complete  
-3. 📝 **Phase 2: Implementation** - Ready to start
-   - Create branch `001-heat-pump-remote-dashboard`
-   - Set up development environment (ref: quickstart.md)
-   - Begin component implementation
-4. 📝 **Phase 3: Testing** - After implementation
-5. 📝 **Phase 4: Integration** - After testing
+No constitutional violations identified. All architectural decisions align with the Demo-v1 Frontend Constitution principles.
