@@ -1,0 +1,20 @@
+.custom-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+.custom-badge--success .ant-badge-status-dot {
+  background-color: var(--color-success);
+}
+
+.custom-badge--warning .ant-badge-status-dot {
+  background-color: var(--color-warning);
+}
+
+.custom-badge--error .ant-badge-status-dot {
+  background-color: var(--color-error);
+}
+
+.custom-badge--info .ant-badge-status-dot {
+  background-color: var(--color-info);
+}

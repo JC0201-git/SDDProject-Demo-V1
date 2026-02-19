@@ -1,0 +1,28 @@
+.custom-button {
+  transition: all var(--transition-fast);
+}
+
+.custom-button--full-width {
+  width: 100%;
+}
+
+.custom-button--danger {
+  background-color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.custom-button--danger:hover {
+  background-color: #ff7875;
+  border-color: #ff7875;
+}
+
+.custom-button--secondary {
+  background-color: var(--color-bg-primary);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.custom-button--secondary:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
