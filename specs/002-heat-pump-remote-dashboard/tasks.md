@@ -132,7 +132,7 @@
 - [ ] T060 [US1] 建立全域總覽統計元件：建立 frontend/src/components/organisms/GlobalSummary（顯示在線設備數、總耗電量、總產熱量、整體COP 四個數字卡片）
 - [ ] T061 [US1] 建立儀表板佈局模板：建立 frontend/src/components/templates/DashboardLayout（包含頂部總覽區、左側設備清單、中央內容區、右上角通知圖示）
 - [ ] T062 [US1] 建立儀表板頁面容器：建立 frontend/src/pages/DashboardPage/DashboardPage.tsx（容器元件，使用 React Query 獲取設備清單與總覽資料，整合 DashboardLayout、GlobalSummary、DeviceList、NotificationCenter）
-- [ ] T063 [US1] 實作 WebSocket 即時更新：建立 frontend/src/services/websocket/client.ts，連接至 `/realtime` 命名空間，監聽 `device:telemetry:update` 事件，自動更新儀表板資料（使用 React Query 的 queryClient.invalidateQueries）
+- [ ] T063 [US1] 實作 WebSocket 即時更新與輪詢降級機制：建立 frontend/src/services/websocket/client.ts，連接至 `/realtime` 命名空間，監聽 `device:telemetry:update` 事件，自動更新儀表板資料（使用 React Query 的 queryClient.invalidateQueries）。實作 30 秒輪詢降級方案：當 WebSocket 連線失敗或斷線時，自動切換為每 30 秒輪詢 GET /api/devices 端點，確保資料更新不中斷（符合 FR-006 需求）
 - [ ] T064 [US1] 實作受保護路由與 Session 管理：修改 frontend/src/routes.tsx，加入認證檢查，未登入時重新導向至 /login。實作 Session 過期邏輯：記錄最後操作時間，8 小時無任何 API 請求或使用者互動時，前端主動呼叫 logout API 並導向登入頁，顯示「登入已過期，請重新登入」訊息
 - [ ] T065 [US1] 實作 Loading 與錯誤狀態：在 DashboardPage 加入 Skeleton Screens（載入時）、錯誤提示（網路異常時）、Empty State（無設備時）
 

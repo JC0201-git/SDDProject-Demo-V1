@@ -13,7 +13,7 @@
 
 **語言/版本**: 
 - 前端：React 18+ + TypeScript 5+
-- 後端：NEEDS CLARIFICATION（需選擇：Node.js/Express、Python/FastAPI、Go/Gin 等）
+- 後端：Node.js 18+ + Fastify 4.25+ + TypeScript 5+
 
 **主要依賴項目**: 
 - 前端：React, TypeScript, Ant Design 或 Material-UI（UI元件庫）, Recharts 或 ECharts（圖表庫）, Axios（HTTP客戶端）, React Router v6+（路由）, Zustand 或 React Query（狀態管理）

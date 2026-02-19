@@ -680,6 +680,151 @@ pnpm test:e2e
 
 ---
 
+## 管理員操作指南
+
+本章節提供系統管理員常見維運任務的操作步驟，包含使用者管理、資料維護等管理功能。
+
+### 重設使用者密碼
+
+當使用者忘記密碼時，系統管理員可透過直接操作資料庫的方式重設密碼。
+
+#### 前置條件
+
+- 已安裝 PostgreSQL 客戶端工具（`psql`）
+- 擁有資料庫管理員權限
+- 已安裝 `bcrypt` 工具（用於產生密碼雜湊）
+
+#### 步驟 1：產生新密碼雜湊
+
+使用 Node.js 執行以下指令產生新密碼的雜湊值：
+
+```bash
+# 安裝 bcrypt 工具（若尚未安裝）
+npm install -g bcrypt-cli
+
+# 產生新密碼雜湊（例如：重設為 NewPassword123）
+bcrypt-cli hash "NewPassword123" 10
+```
+
+輸出範例：
+```
+$2b$10$abcdefghijklmnopqrstuv0123456789ABCDEFGHIJKLMNO
+```
+
+#### 步驟 2：連接資料庫
+
+```bash
+# 使用 psql 連接資料庫
+psql -h localhost -U postgres -d heat_pump_dashboard
+```
+
+#### 步驟 3：執行密碼重設 SQL
+
+```sql
+-- 查詢要重設密碼的使用者
+SELECT "userId", "username", "displayName" FROM "User" WHERE "username" = 'admin';
+
+-- 重設密碼（將下方雜湊值替換為步驟 1 產生的雜湊）
+UPDATE "User" 
+SET "passwordHash" = '$2b$10$abcdefghijklmnopqrstuv0123456789ABCDEFGHIJKLMNO',
+    "loginFailCount" = 0,
+    "accountLockedUntil" = NULL,
+    "updatedAt" = NOW()
+WHERE "username" = 'admin';
+
+-- 驗證更新結果
+SELECT "userId", "username", "displayName", "updatedAt" FROM "User" WHERE "username" = 'admin';
+```
+
+#### 步驟 4：通知使用者
+
+- 將新密碼（明文）透過安全管道（當面告知或加密通訊）提供給使用者
+- 建議使用者登入後立即修改密碼（待前端實作「修改密碼」功能後適用）
+
+#### 安全注意事項
+
+⚠️ **重要提醒**：
+
+1. **絕對不要**在生產環境日誌或明文檔案中記錄使用者密碼
+2. **絕對不要**透過電子郵件或即時通訊工具傳送明文密碼
+3. 密碼重設操作應記錄在管理員稽核日誌中（操作者、時間、目標帳號）
+4. 建議設定臨時密碼並要求使用者首次登入後強制修改
+
+#### 替代方案：使用管理腳本（進階）
+
+若需頻繁重設密碼，可建立管理腳本 `backend/scripts/reset-password.ts`：
+
+```typescript
+import bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function resetPassword(username: string, newPlainPassword: string) {
+  const passwordHash = await bcrypt.hash(newPlainPassword, 10);
+  
+  const result = await prisma.user.update({
+    where: { username },
+    data: {
+      passwordHash,
+      loginFailCount: 0,
+      accountLockedUntil: null,
+      updatedAt: new Date(),
+    },
+    select: { userId: true, username: true, displayName: true },
+  });
+  
+  console.log('✅ 密碼重設成功：', result);
+  console.log(`📧 請將新密碼告知使用者：${newPlainPassword}`);
+}
+
+// 使用範例：pnpm tsx backend/scripts/reset-password.ts
+const username = process.argv[2];
+const newPassword = process.argv[3];
+
+if (!username || !newPassword) {
+  console.error('❌ 用法：pnpm tsx backend/scripts/reset-password.ts <使用者名稱> <新密碼>');
+  process.exit(1);
+}
+
+resetPassword(username, newPassword)
+  .then(() => prisma.$disconnect())
+  .catch((error) => {
+    console.error('❌ 密碼重設失敗：', error);
+    prisma.$disconnect();
+    process.exit(1);
+  });
+```
+
+執行方式：
+```bash
+cd backend
+pnpm tsx scripts/reset-password.ts admin NewPassword123
+```
+
+### 清除帳號鎖定狀態
+
+當使用者因連續登入失敗導致帳號被鎖定，管理員可手動解除鎖定：
+
+```sql
+-- 解除帳號鎖定
+UPDATE "User" 
+SET "loginFailCount" = 0,
+    "accountLockedUntil" = NULL
+WHERE "username" = 'admin';
+```
+
+### 手動觸發資料清理
+
+若需手動執行資料清理作業（刪除超過 30 天的舊資料）：
+
+```bash
+cd backend
+pnpm tsx src/services/cleanup.ts --execute
+```
+
+---
+
 ## 除錯與常見問題
 
 ### 後端無法連接資料庫
