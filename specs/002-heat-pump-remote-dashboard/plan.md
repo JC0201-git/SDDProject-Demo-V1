@@ -16,9 +16,14 @@
 - 後端：Node.js 18+ + Fastify 4.25+ + TypeScript 5+
 
 **主要依賴項目**: 
-- 前端：React, TypeScript, Ant Design 或 Material-UI（UI元件庫）, Recharts 或 ECharts（圖表庫）, Axios（HTTP客戶端）, React Router v6+（路由）, Zustand 或 React Query（狀態管理）
-- 後端：Fastify 4.25+（Web 框架）, mqtt.js 5.3+（MQTT Client）, Prisma 5.8+（PostgreSQL ORM）, bcrypt/Argon2（密碼雜湊）
+- 前端：React, TypeScript, **Ant Design**（UI元件庫）, **ECharts**（圖表庫）, Axios（HTTP客戶端）, React Router v6+（路由）, React Query + Zustand（狀態管理：Server Cache 使用 React Query，Global State 使用 Zustand）
+- 後端：Fastify 4.25+（Web 框架）, mqtt.js 5.3+（MQTT Client）, Prisma 5.8+（PostgreSQL ORM）, bcrypt（密碼雜湊）
 - 基礎設施：MQTT Broker（Mosquitto 或 EMQX）, PostgreSQL 15+（資料庫）, Redis（Session 快取，可選）
+
+**技術選型理由**：
+- **Ant Design**: 企業級 UI 元件庫，提供完整的表格、表單、通知等元件，適合儀表板類型應用
+- **ECharts**: 功能強大的圖表庫，支援即時資料更新、大數據量渲染、豐富的視覺化選項，適合趨勢圖表需求
+- **React Query + Zustand**: React Query 專門處理伺服器快取與資料同步，Zustand 輕量級處理全域狀態，職責劃分清晰
 
 **儲存**: PostgreSQL 或 MySQL（儲存使用者帳號、設備資訊、即時資料點、通知訊息、控制指令記錄）
 
