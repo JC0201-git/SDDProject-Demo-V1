@@ -25,7 +25,7 @@
 - **ECharts**: 功能強大的圖表庫，支援即時資料更新、大數據量渲染、豐富的視覺化選項，適合趨勢圖表需求
 - **React Query + Zustand**: React Query 專門處理伺服器快取與資料同步，Zustand 輕量級處理全域狀態，職責劃分清晰
 
-**儲存**: PostgreSQL 或 MySQL（儲存使用者帳號、設備資訊、即時資料點、通知訊息、控制指令記錄）
+**儲存**: PostgreSQL 15+（儲存使用者帳號、設備資訊、即時資料點、通知訊息、控制指令記錄）
 
 **測試**: 
 - 前端：Vitest 1.2+ + React Testing Library（單元測試、整合測試）

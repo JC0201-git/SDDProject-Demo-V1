@@ -216,10 +216,10 @@
 **前端技術堆疊**：
 - **核心框架**：React 18+（採用函式元件與 Hooks 模式）
 - **程式語言**：TypeScript 5+（提供型別安全，減少執行時期錯誤）
-- **狀態管理**：React Context API 或 Zustand（輕量級狀態管理，適合中型應用）
-- **UI 元件庫**：Ant Design 或 Material-UI（提供完整的企業級元件，加速開發）
-- **圖表視覺化**：Recharts 或 ECharts for React（專業的圖表庫，支援即時資料更新）
-- **即時通訊**：WebSocket 或 Server-Sent Events（用於接收後端推送的即時設備資料）
+- **狀態管理**：React Query（Server Cache）+ Zustand（Global State），遵循憲法要求的三層狀態分離原則
+- **UI 元件庫**：Ant Design（企業級元件庫，提供完整的表格、表單、通知等元件，適合儀表板應用）
+- **圖表視覺化**：ECharts for React（功能強大的圖表庫，支援即時資料更新、大數據量渲染、豐富的視覺化選項，適合趨勢圖表需求）
+- **即時通訊**：WebSocket + Socket.io（用於接收後端推送的即時設備資料與通知，支援房間管理與自動重連）
 - **HTTP 客戶端**：Axios 或 Fetch API（處理 RESTful API 請求）
 - **路由管理**：React Router v6+（處理多頁面導航）
 - **樣式方案**：CSS Modules 或 Styled Components（模組化樣式，避免命名衝突）
