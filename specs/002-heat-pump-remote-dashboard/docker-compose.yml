@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: heat-pump-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: heat_pump_dashboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mosquitto MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: heat-pump-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./infrastructure/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -W 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (Optional - for session caching)
+  redis:
+    image: redis:7-alpine
+    container_name: heat-pump-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Backend API (uncomment after initial setup)
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: ../infrastructure/docker/backend.Dockerfile
+  #   container_name: heat-pump-backend
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     PORT: 3000
+  #     DATABASE_URL: postgresql://postgres:password@postgres:5432/heat_pump_dashboard?schema=public
+  #     MQTT_BROKER_URL: mqtt://mosquitto:1883
+  #     REDIS_URL: redis://redis:6379
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     mosquitto:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./backend:/app
+  #     - /app/node_modules
+
+  # Frontend (uncomment after initial setup)
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: ../infrastructure/docker/frontend.Dockerfile
+  #   container_name: heat-pump-frontend
+  #   restart: unless-stopped
+  #   environment:
+  #     VITE_API_BASE_URL: http://localhost:3000/api
+  #     VITE_WS_URL: http://localhost:3000
+  #   ports:
+  #     - "5173:5173"
+  #   depends_on:
+  #     - backend
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+  mosquitto_logs:
+  redis_data:
+
+networks:
+  default:
+    name: heat-pump-network

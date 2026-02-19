@@ -26,15 +26,15 @@
 
 **目的**：建立專案基礎結構與開發環境
 
-- [ ] T001 根據 plan.md 第 246-313 行建立完整的專案目錄結構（backend/ 與 frontend/）
-- [ ] T002 [P] 初始化後端專案：建立 backend/package.json，安裝 Fastify v4.25+、Prisma v5.8+、TypeScript v5+、mqtt.js v5.3+、socket.io v4.6+ 等依賴項目
-- [ ] T003 [P] 初始化前端專案：建立 frontend/package.json，安裝 React 18+、TypeScript 5+、Ant Design/Material-UI、Recharts/ECharts、React Router v6+、Zustand/React Query 等依賴項目
-- [ ] T004 [P] 配置後端 TypeScript：建立 backend/tsconfig.json，啟用 strict mode、path aliases (@/*) 等設定
-- [ ] T005 [P] 配置前端 TypeScript：建立 frontend/tsconfig.json，設定 JSX、DOM types、path aliases 等
-- [ ] T006 [P] 配置 ESLint 與 Prettier：建立 backend/.eslintrc.js 與 frontend/.eslintrc.js，套用 TypeScript 規則
-- [ ] T007 [P] 建立環境變數範本：建立 backend/.env.example 與 frontend/.env.example（包含資料庫、MQTT、API URL 等配置）
-- [ ] T008 建立 Docker Compose 配置檔：建立 docker-compose.yml，定義 PostgreSQL、Mosquitto MQTT Broker、Redis 等服務
-- [ ] T009 [P] 建立 README.md：包含專案簡介、快速啟動指令、技術堆疊說明
+- [X] T001 根據 plan.md 第 246-313 行建立完整的專案目錄結構（backend/ 與 frontend/）
+- [X] T002 [P] 初始化後端專案：建立 backend/package.json，安裝 Fastify v4.25+、Prisma v5.8+、TypeScript v5+、mqtt.js v5.3+、socket.io v4.6+ 等依賴項目
+- [X] T003 [P] 初始化前端專案：建立 frontend/package.json，安裝 React 18+、TypeScript 5+、Ant Design/Material-UI、Recharts/ECharts、React Router v6+、Zustand/React Query 等依賴項目
+- [X] T004 [P] 配置後端 TypeScript：建立 backend/tsconfig.json，啟用 strict mode、path aliases (@/*) 等設定
+- [X] T005 [P] 配置前端 TypeScript：建立 frontend/tsconfig.json，設定 JSX、DOM types、path aliases 等
+- [X] T006 [P] 配置 ESLint 與 Prettier：建立 backend/.eslintrc.js 與 frontend/.eslintrc.js，套用 TypeScript 規則
+- [X] T007 [P] 建立環境變數範本：建立 backend/.env.example 與 frontend/.env.example（包含資料庫、MQTT、API URL 等配置）
+- [X] T008 建立 Docker Compose 配置檔：建立 docker-compose.yml，定義 PostgreSQL、Mosquitto MQTT Broker、Redis 等服務
+- [X] T009 [P] 建立 README.md：包含專案簡介、快速啟動指令、技術堆疊說明
 
 **檢查點**：專案結構完整，開發環境可啟動
 
