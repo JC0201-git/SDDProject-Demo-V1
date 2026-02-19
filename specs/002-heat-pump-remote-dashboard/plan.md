@@ -17,15 +17,15 @@
 
 **主要依賴項目**: 
 - 前端：React, TypeScript, Ant Design 或 Material-UI（UI元件庫）, Recharts 或 ECharts（圖表庫）, Axios（HTTP客戶端）, React Router v6+（路由）, Zustand 或 React Query（狀態管理）
-- 後端：NEEDS CLARIFICATION（需選擇 Web 框架）, MQTT Client Library, PostgreSQL Driver, bcrypt/Argon2（密碼雜湊）
-- 基礎設施：MQTT Broker（Mosquitto 或 EMQX）, PostgreSQL 或 MySQL（資料庫）, Redis（Session 快取，可選）
+- 後端：Fastify 4.25+（Web 框架）, mqtt.js 5.3+（MQTT Client）, Prisma 5.8+（PostgreSQL ORM）, bcrypt/Argon2（密碼雜湊）
+- 基礎設施：MQTT Broker（Mosquitto 或 EMQX）, PostgreSQL 15+（資料庫）, Redis（Session 快取，可選）
 
 **儲存**: PostgreSQL 或 MySQL（儲存使用者帳號、設備資訊、即時資料點、通知訊息、控制指令記錄）
 
 **測試**: 
-- 前端：Jest + React Testing Library（單元測試、整合測試）
-- 後端：NEEDS CLARIFICATION（依據選擇的語言：pytest/Jest/Go test）
-- E2E：Playwright 或 Cypress（可選）
+- 前端：Vitest 1.2+ + React Testing Library（單元測試、整合測試）
+- 後端：Vitest 1.2+ + Supertest 6.3+（API 測試）
+- E2E：Playwright（端到端測試）
 
 **目標平台**: Web（響應式設計，支援桌面瀏覽器、平板、手機）
 
