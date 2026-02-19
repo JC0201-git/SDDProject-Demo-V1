@@ -1,0 +1,590 @@
+openapi: 3.0.0
+info:
+  title: 控制指令 API
+  description: |
+    熱泵設備遠端控制指令 API。
+    
+    本 API 提供遠端控制指令的送出、查詢與執行狀態追蹤功能。
+    所有控制指令都會經過速率限制檢查（每台設備 10 秒冷卻期）。
+    指令操作記錄保存 30 天。
+  version: 1.0.0
+  contact:
+    name: 熱泵遠端監控系統開發團隊
+
+servers:
+  - url: https://api.heatpump.example.com
+    description: 生產環境
+  - url: http://localhost:3000
+    description: 開發環境
+
+tags:
+  - name: 控制指令
+    description: 遠端控制指令管理
+
+paths:
+  /api/commands:
+    post:
+      tags:
+        - 控制指令
+      summary: 送出控制指令
+      description: |
+        送出遠端控制指令至指定設備。
+        
+        **支援的指令類型**：
+        - `SET_MODE`：切換運作模式（自動/手動）
+        - `SET_TARGET_TEMP`：設定目標水溫（僅手動模式）
+        - `ADJUST_PARAMETER`：調整其他參數
+        
+        **速率限制**：
+        - 每台設備有 10 秒的控制指令冷卻期
+        - 在冷卻期內送出的指令會被拒絕（回傳 429）
+        - 提示訊息會包含剩餘冷卻秒數
+        
+        **執行流程**：
+        1. 後端驗證指令合法性與速率限制
+        2. 發布指令至 MQTT Broker（`devices/{device_code}/commands` Topic）
+        3. 指令狀態設為 PENDING（傳送中）
+        4. 設備接收指令並執行，回傳確認訊息
+        5. 後端更新指令狀態為 ACKNOWLEDGED（已確認）
+        6. 若 3 秒內未收到確認，狀態更新為 TIMEOUT（逾時）
+        
+        **前端顯示**：
+        - 送出後顯示「指令傳送中...」載入提示
+        - 收到 `commandId` 後，可定期呼叫 `GET /api/commands/{commandId}` 查詢執行狀態
+        - 當狀態變為 ACKNOWLEDGED 時，顯示「指令已送達」確認訊息
+      operationId: createCommand
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deviceId
+                - commandType
+                - commandContent
+              properties:
+                deviceId:
+                  type: integer
+                  description: 目標設備 ID
+                  example: 1
+                commandType:
+                  type: string
+                  description: 指令類型
+                  enum:
+                    - SET_MODE
+                    - SET_TARGET_TEMP
+                    - ADJUST_PARAMETER
+                  example: "SET_MODE"
+                commandContent:
+                  type: object
+                  description: 指令內容（依指令類型而定）
+                  additionalProperties: true
+            examples:
+              setMode:
+                summary: 切換至手動模式
+                value:
+                  deviceId: 1
+                  commandType: "SET_MODE"
+                  commandContent:
+                    mode: "MANUAL"
+              setTargetTemp:
+                summary: 設定目標水溫
+                value:
+                  deviceId: 1
+                  commandType: "SET_TARGET_TEMP"
+                  commandContent:
+                    targetTemperature: 60.0
+              adjustParameter:
+                summary: 調整其他參數
+                value:
+                  deviceId: 1
+                  commandType: "ADJUST_PARAMETER"
+                  commandContent:
+                    parameter: "compressorFrequency"
+                    value: 55.0
+      responses:
+        '201':
+          description: 指令已成功送出
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "指令已送出"
+                  data:
+                    type: object
+                    properties:
+                      commandId:
+                        type: string
+                        description: 指令 ID（UUID 格式）
+                        example: "550e8400-e29b-41d4-a716-446655440000"
+                      deviceId:
+                        type: integer
+                        description: 目標設備 ID
+                        example: 1
+                      commandType:
+                        type: string
+                        description: 指令類型
+                        example: "SET_MODE"
+                      status:
+                        type: string
+                        description: 指令狀態
+                        enum: [PENDING, ACKNOWLEDGED, TIMEOUT, FAILED]
+                        example: "PENDING"
+                      sentAt:
+                        type: string
+                        format: date-time
+                        description: 送出時間
+                        example: "2026-02-19T14:30:00Z"
+        '400':
+          description: 請求參數錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidCommandType:
+                  summary: 指令類型無效
+                  value:
+                    success: false
+                    error:
+                      code: "INVALID_COMMAND_TYPE"
+                      message: "指令類型無效"
+                      details:
+                        commandType: "INVALID_TYPE"
+                        validTypes: ["SET_MODE", "SET_TARGET_TEMP", "ADJUST_PARAMETER"]
+                invalidCommandContent:
+                  summary: 指令內容格式錯誤
+                  value:
+                    success: false
+                    error:
+                      code: "INVALID_COMMAND_CONTENT"
+                      message: "指令內容格式錯誤"
+                      details:
+                        field: "targetTemperature"
+                        reason: "目標水溫必須在 0-100°C 之間"
+                deviceOffline:
+                  summary: 設備目前離線
+                  value:
+                    success: false
+                    error:
+                      code: "DEVICE_OFFLINE"
+                      message: "設備目前離線，無法執行遠端控制"
+                      details:
+                        deviceId: 1
+                        lastDataReceivedAt: "2026-02-19T13:45:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: 速率限制（設備冷卻期內）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: "RATE_LIMIT_EXCEEDED"
+                  message: "此設備剛完成操作，請等待 5 秒後再試"
+                  details:
+                    deviceId: 1
+                    remainingSeconds: 5
+                    lastControlledAt: "2026-02-19T14:29:55Z"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/commands/{commandId}:
+    get:
+      tags:
+        - 控制指令
+      summary: 查詢指令執行狀態
+      description: |
+        查詢指定指令的執行狀態。
+        
+        **指令狀態**：
+        - `PENDING`：傳送中（等待設備確認）
+        - `ACKNOWLEDGED`：已確認（設備已接收並執行）
+        - `TIMEOUT`：逾時（3 秒內未收到設備確認）
+        - `FAILED`：失敗（設備回報執行失敗）
+        
+        **輪詢建議**：
+        - 前端可每 500ms 輪詢一次狀態
+        - 當狀態變為 ACKNOWLEDGED、TIMEOUT 或 FAILED 時停止輪詢
+      operationId: getCommandById
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          description: 指令 ID（UUID 格式）
+          schema:
+            type: string
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: 成功取得指令資訊
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/CommandDetail'
+              examples:
+                pending:
+                  summary: 傳送中
+                  value:
+                    success: true
+                    data:
+                      commandId: "550e8400-e29b-41d4-a716-446655440000"
+                      deviceId: 1
+                      deviceName: "A站"
+                      userId: 1
+                      operatorName: "張經理"
+                      commandType: "SET_MODE"
+                      commandContent:
+                        mode: "MANUAL"
+                      status: "PENDING"
+                      sentAt: "2026-02-19T14:30:00Z"
+                      acknowledgedAt: null
+                      errorMessage: null
+                acknowledged:
+                  summary: 已確認
+                  value:
+                    success: true
+                    data:
+                      commandId: "550e8400-e29b-41d4-a716-446655440000"
+                      deviceId: 1
+                      deviceName: "A站"
+                      userId: 1
+                      operatorName: "張經理"
+                      commandType: "SET_MODE"
+                      commandContent:
+                        mode: "MANUAL"
+                      status: "ACKNOWLEDGED"
+                      sentAt: "2026-02-19T14:30:00Z"
+                      acknowledgedAt: "2026-02-19T14:30:02Z"
+                      errorMessage: null
+                timeout:
+                  summary: 逾時
+                  value:
+                    success: true
+                    data:
+                      commandId: "550e8400-e29b-41d4-a716-446655440000"
+                      deviceId: 1
+                      deviceName: "A站"
+                      userId: 1
+                      operatorName: "張經理"
+                      commandType: "SET_MODE"
+                      commandContent:
+                        mode: "MANUAL"
+                      status: "TIMEOUT"
+                      sentAt: "2026-02-19T14:30:00Z"
+                      acknowledgedAt: null
+                      errorMessage: "設備未在 3 秒內回應確認訊息"
+                failed:
+                  summary: 執行失敗
+                  value:
+                    success: true
+                    data:
+                      commandId: "550e8400-e29b-41d4-a716-446655440000"
+                      deviceId: 1
+                      deviceName: "A站"
+                      userId: 1
+                      operatorName: "張經理"
+                      commandType: "SET_TARGET_TEMP"
+                      commandContent:
+                        targetTemperature: 60.0
+                      status: "FAILED"
+                      sentAt: "2026-02-19T14:30:00Z"
+                      acknowledgedAt: null
+                      errorMessage: "目標溫度超出設備可支援範圍"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/commands/device/{deviceId}:
+    get:
+      tags:
+        - 控制指令
+      summary: 取得設備最近操作記錄
+      description: |
+        取得指定設備最近 5 筆控制指令操作記錄。
+        
+        **回應資料包含**：
+        - 操作時間
+        - 操作者名稱
+        - 指令類型與內容
+        - 執行狀態
+        
+        **用途**：顯示於設備控制區域下方，讓管理人員了解設備最近的控制歷史。
+      operationId: getDeviceCommands
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: 設備 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 成功取得操作記錄
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      deviceId:
+                        type: integer
+                        example: 1
+                      commands:
+                        type: array
+                        description: 操作記錄（最近 5 筆，依時間倒序）
+                        items:
+                          $ref: '#/components/schemas/CommandSummary'
+              example:
+                success: true
+                data:
+                  deviceId: 1
+                  commands:
+                    - commandId: "550e8400-e29b-41d4-a716-446655440000"
+                      operatorName: "張經理"
+                      commandType: "SET_TARGET_TEMP"
+                      commandContent:
+                        targetTemperature: 60.0
+                      status: "ACKNOWLEDGED"
+                      sentAt: "2026-02-19T14:32:00Z"
+                      description: "設定目標水溫 60°C"
+                    - commandId: "550e8400-e29b-41d4-a716-446655440001"
+                      operatorName: "張經理"
+                      commandType: "SET_MODE"
+                      commandContent:
+                        mode: "MANUAL"
+                      status: "ACKNOWLEDGED"
+                      sentAt: "2026-02-19T14:30:00Z"
+                      description: "切換至手動模式"
+                    - commandId: "550e8400-e29b-41d4-a716-446655440002"
+                      operatorName: "李經理"
+                      commandType: "SET_MODE"
+                      commandContent:
+                        mode: "AUTO"
+                      status: "ACKNOWLEDGED"
+                      sentAt: "2026-02-19T13:15:00Z"
+                      description: "切換至自動模式"
+                    - commandId: "550e8400-e29b-41d4-a716-446655440003"
+                      operatorName: "王經理"
+                      commandType: "SET_TARGET_TEMP"
+                      commandContent:
+                        targetTemperature: 55.0
+                      status: "ACKNOWLEDGED"
+                      sentAt: "2026-02-19T10:45:00Z"
+                      description: "設定目標水溫 55°C"
+                    - commandId: "550e8400-e29b-41d4-a716-446655440004"
+                      operatorName: "張經理"
+                      commandType: "SET_MODE"
+                      commandContent:
+                        mode: "MANUAL"
+                      status: "ACKNOWLEDGED"
+                      sentAt: "2026-02-19T10:30:00Z"
+                      description: "切換至手動模式"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionToken
+      description: Session Token（儲存於 HttpOnly Cookie）
+
+  schemas:
+    CommandDetail:
+      type: object
+      description: 控制指令詳細資訊
+      properties:
+        commandId:
+          type: string
+          description: 指令 ID（UUID 格式）
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        deviceId:
+          type: integer
+          description: 目標設備 ID
+          example: 1
+        deviceName:
+          type: string
+          description: 目標設備名稱
+          example: "A站"
+        userId:
+          type: integer
+          description: 操作者 ID
+          example: 1
+        operatorName:
+          type: string
+          description: 操作者顯示名稱
+          example: "張經理"
+        commandType:
+          type: string
+          description: 指令類型
+          enum: [SET_MODE, SET_TARGET_TEMP, ADJUST_PARAMETER]
+          example: "SET_MODE"
+        commandContent:
+          type: object
+          description: 指令內容
+          additionalProperties: true
+          example:
+            mode: "MANUAL"
+        status:
+          type: string
+          description: 執行狀態
+          enum: [PENDING, ACKNOWLEDGED, TIMEOUT, FAILED]
+          example: "ACKNOWLEDGED"
+        sentAt:
+          type: string
+          format: date-time
+          description: 送出時間
+          example: "2026-02-19T14:30:00Z"
+        acknowledgedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 確認時間（若為 PENDING、TIMEOUT 或 FAILED 則為 null）
+          example: "2026-02-19T14:30:02Z"
+        errorMessage:
+          type: string
+          nullable: true
+          description: 錯誤訊息（僅 TIMEOUT 或 FAILED 狀態）
+          example: null
+
+    CommandSummary:
+      type: object
+      description: 控制指令摘要資訊（用於操作記錄清單）
+      properties:
+        commandId:
+          type: string
+          description: 指令 ID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        operatorName:
+          type: string
+          description: 操作者顯示名稱
+          example: "張經理"
+        commandType:
+          type: string
+          description: 指令類型
+          enum: [SET_MODE, SET_TARGET_TEMP, ADJUST_PARAMETER]
+          example: "SET_MODE"
+        commandContent:
+          type: object
+          description: 指令內容
+          additionalProperties: true
+          example:
+            mode: "MANUAL"
+        status:
+          type: string
+          description: 執行狀態
+          enum: [PENDING, ACKNOWLEDGED, TIMEOUT, FAILED]
+          example: "ACKNOWLEDGED"
+        sentAt:
+          type: string
+          format: date-time
+          description: 送出時間
+          example: "2026-02-19T14:30:00Z"
+        description:
+          type: string
+          description: 操作描述（人類可讀）
+          example: "切換至手動模式"
+
+    ErrorResponse:
+      type: object
+      description: 標準錯誤回應格式
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: 錯誤代碼
+              example: "DEVICE_OFFLINE"
+            message:
+              type: string
+              description: 錯誤訊息（繁體中文）
+              example: "設備目前離線，無法執行遠端控制"
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: 未授權（Session 無效或過期）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "登入已過期，請重新登入"
+
+    NotFound:
+      description: 找不到指定的資源
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "DEVICE_NOT_FOUND"
+              message: "找不到指定的設備"
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "系統發生錯誤，請稍後再試"

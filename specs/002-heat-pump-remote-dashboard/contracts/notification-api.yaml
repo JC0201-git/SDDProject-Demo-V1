@@ -1,0 +1,512 @@
+openapi: 3.0.0
+info:
+  title: 通知 API
+  description: |
+    異常事件通知管理 API。
+    
+    本 API 提供通知清單查詢、未讀通知計數、標記已讀等功能。
+    通知訊息保存期限為 7 天，超過 7 天的通知會自動清理。
+  version: 1.0.0
+  contact:
+    name: 熱泵遠端監控系統開發團隊
+
+servers:
+  - url: https://api.heatpump.example.com
+    description: 生產環境
+  - url: http://localhost:3000
+    description: 開發環境
+
+tags:
+  - name: 通知
+    description: 異常事件通知管理
+
+paths:
+  /api/notifications:
+    get:
+      tags:
+        - 通知
+      summary: 取得通知清單
+      description: |
+        取得通知清單，支援篩選與分頁。
+        
+        **篩選選項**：
+        - `isRead`：篩選已讀/未讀通知（選填）
+        - `severity`：篩選嚴重程度（選填）
+        - `deviceId`：篩選特定設備的通知（選填）
+        
+        **分頁機制**：
+        - 預設回傳最近 50 則通知
+        - 可透過 `limit` 與 `offset` 參數調整分頁
+        - 較舊的通知可透過「載入更多」按鈕載入
+        
+        **排序**：
+        - 依發生時間倒序排列（最新的在前）
+        
+        **顯示限制**：
+        - 通知中心面板一次最多顯示 50 則通知
+        - 超過 99 則未讀通知時，顯示「99+」
+      operationId: getNotifications
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: isRead
+          in: query
+          required: false
+          description: 篩選已讀/未讀通知（true：已讀，false：未讀）
+          schema:
+            type: boolean
+            example: false
+        - name: severity
+          in: query
+          required: false
+          description: 篩選嚴重程度
+          schema:
+            type: string
+            enum: [INFO, WARNING, ERROR]
+            example: "ERROR"
+        - name: deviceId
+          in: query
+          required: false
+          description: 篩選特定設備的通知
+          schema:
+            type: integer
+            example: 1
+        - name: limit
+          in: query
+          required: false
+          description: 每頁回傳數量（預設 50，最大 100）
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+            example: 50
+        - name: offset
+          in: query
+          required: false
+          description: 分頁偏移量（預設 0）
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+            example: 0
+      responses:
+        '200':
+          description: 成功取得通知清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      notifications:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+                      pagination:
+                        type: object
+                        description: 分頁資訊
+                        properties:
+                          total:
+                            type: integer
+                            description: 總通知數量
+                            example: 125
+                          limit:
+                            type: integer
+                            description: 每頁回傳數量
+                            example: 50
+                          offset:
+                            type: integer
+                            description: 當前偏移量
+                            example: 0
+                          hasMore:
+                            type: boolean
+                            description: 是否還有更多通知
+                            example: true
+              examples:
+                unreadNotifications:
+                  summary: 未讀通知清單
+                  value:
+                    success: true
+                    data:
+                      notifications:
+                        - notificationId: 1
+                          eventType: "TEMPERATURE_ABNORMAL"
+                          severity: "ERROR"
+                          deviceId: 2
+                          deviceName: "B站"
+                          title: "排氣溫度異常"
+                          description: "排氣溫度達到 92.5°C，超過安全閾值 85.0°C"
+                          occurredAt: "2026-02-19T14:30:00Z"
+                          isRead: false
+                          readAt: null
+                        - notificationId: 2
+                          eventType: "PRESSURE_ABNORMAL"
+                          severity: "WARNING"
+                          deviceId: 1
+                          deviceName: "A站"
+                          title: "高壓壓力偏高"
+                          description: "高壓壓力達到 3.45 MPa，接近安全閾值 3.5 MPa"
+                          occurredAt: "2026-02-19T14:15:00Z"
+                          isRead: false
+                          readAt: null
+                        - notificationId: 3
+                          eventType: "DEVICE_OFFLINE"
+                          severity: "ERROR"
+                          deviceId: 3
+                          deviceName: "C站"
+                          title: "設備離線"
+                          description: "設備已超過 30 秒未回報資料，判定為離線"
+                          occurredAt: "2026-02-19T13:45:30Z"
+                          isRead: false
+                          readAt: null
+                      pagination:
+                        total: 3
+                        limit: 50
+                        offset: 0
+                        hasMore: false
+                allNotifications:
+                  summary: 所有通知（含已讀）
+                  value:
+                    success: true
+                    data:
+                      notifications:
+                        - notificationId: 1
+                          eventType: "TEMPERATURE_ABNORMAL"
+                          severity: "ERROR"
+                          deviceId: 2
+                          deviceName: "B站"
+                          title: "排氣溫度異常"
+                          description: "排氣溫度達到 92.5°C，超過安全閾值 85.0°C"
+                          occurredAt: "2026-02-19T14:30:00Z"
+                          isRead: false
+                          readAt: null
+                        - notificationId: 4
+                          eventType: "TEMPERATURE_ABNORMAL"
+                          severity: "ERROR"
+                          deviceId: 2
+                          deviceName: "B站"
+                          title: "排氣溫度異常"
+                          description: "排氣溫度達到 88.0°C，超過安全閾值 85.0°C"
+                          occurredAt: "2026-02-19T12:00:00Z"
+                          isRead: true
+                          readAt: "2026-02-19T12:05:00Z"
+                      pagination:
+                        total: 2
+                        limit: 50
+                        offset: 0
+                        hasMore: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/notifications/unread-count:
+    get:
+      tags:
+        - 通知
+      summary: 取得未讀通知數量
+      description: |
+        取得當前未讀通知的總數量。
+        
+        **用途**：顯示於右上角通知圖示的紅點數字。
+        
+        **顯示規則**：
+        - 0 則未讀：不顯示紅點
+        - 1-99 則未讀：顯示實際數字
+        - 100+ 則未讀：顯示「99+」
+      operationId: getUnreadCount
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 成功取得未讀通知數量
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      unreadCount:
+                        type: integer
+                        description: 未讀通知數量
+                        example: 3
+              examples:
+                noUnread:
+                  summary: 無未讀通知
+                  value:
+                    success: true
+                    data:
+                      unreadCount: 0
+                normalCount:
+                  summary: 一般數量（3 則）
+                  value:
+                    success: true
+                    data:
+                      unreadCount: 3
+                largeCount:
+                  summary: 大量未讀（125 則）
+                  value:
+                    success: true
+                    data:
+                      unreadCount: 125
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/notifications/{notificationId}/read:
+    patch:
+      tags:
+        - 通知
+      summary: 標記通知為已讀
+      description: |
+        標記指定通知為已讀。
+        
+        **效果**：
+        - 將通知的 `isRead` 欄位設為 `true`
+        - 記錄 `readAt` 時間戳記
+        - 未讀通知數量減 1
+      operationId: markNotificationAsRead
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          description: 通知 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 成功標記為已讀
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "通知已標記為已讀"
+                  data:
+                    type: object
+                    properties:
+                      notificationId:
+                        type: integer
+                        example: 1
+                      isRead:
+                        type: boolean
+                        example: true
+                      readAt:
+                        type: string
+                        format: date-time
+                        example: "2026-02-19T14:35:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/notifications/read-all:
+    patch:
+      tags:
+        - 通知
+      summary: 標記所有通知為已讀
+      description: |
+        將目前所有未讀通知標記為已讀。
+        
+        **效果**：
+        - 將所有 `isRead = false` 的通知更新為 `isRead = true`
+        - 記錄 `readAt` 時間戳記
+        - 未讀通知數量歸零
+        
+        **用途**：通知中心的「全部已讀」按鈕。
+      operationId: markAllNotificationsAsRead
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 成功標記所有通知為已讀
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "所有通知已標記為已讀"
+                  data:
+                    type: object
+                    properties:
+                      updatedCount:
+                        type: integer
+                        description: 更新的通知數量
+                        example: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionToken
+      description: Session Token（儲存於 HttpOnly Cookie）
+
+  schemas:
+    Notification:
+      type: object
+      description: 通知訊息
+      properties:
+        notificationId:
+          type: integer
+          description: 通知 ID
+          example: 1
+        eventType:
+          type: string
+          description: 事件類型
+          enum:
+            - DEVICE_OFFLINE
+            - TEMPERATURE_ABNORMAL
+            - PRESSURE_ABNORMAL
+            - COMPONENT_FAILURE
+            - OTHER_ABNORMAL
+          example: "TEMPERATURE_ABNORMAL"
+        severity:
+          type: string
+          description: 嚴重程度
+          enum: [INFO, WARNING, ERROR]
+          example: "ERROR"
+        deviceId:
+          type: integer
+          description: 相關設備 ID
+          example: 2
+        deviceName:
+          type: string
+          description: 相關設備名稱
+          example: "B站"
+        title:
+          type: string
+          description: 通知標題
+          example: "排氣溫度異常"
+        description:
+          type: string
+          description: 詳細描述
+          example: "排氣溫度達到 92.5°C，超過安全閾值 85.0°C"
+        occurredAt:
+          type: string
+          format: date-time
+          description: 發生時間
+          example: "2026-02-19T14:30:00Z"
+        isRead:
+          type: boolean
+          description: 已讀狀態
+          example: false
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 已讀時間（未讀時為 null）
+          example: null
+
+    ErrorResponse:
+      type: object
+      description: 標準錯誤回應格式
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: 錯誤代碼
+              example: "NOTIFICATION_NOT_FOUND"
+            message:
+              type: string
+              description: 錯誤訊息（繁體中文）
+              example: "找不到指定的通知"
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INVALID_REQUEST"
+              message: "請求參數格式錯誤"
+              details:
+                field: "limit"
+                reason: "limit 必須在 1-100 之間"
+
+    Unauthorized:
+      description: 未授權（Session 無效或過期）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "登入已過期，請重新登入"
+
+    NotFound:
+      description: 找不到指定的資源
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "NOTIFICATION_NOT_FOUND"
+              message: "找不到指定的通知"
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "系統發生錯誤，請稍後再試"

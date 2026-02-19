@@ -1,0 +1,651 @@
+openapi: 3.0.0
+info:
+  title: 設備 API
+  description: |
+    熱泵設備管理與狀態查詢 API。
+    
+    本 API 提供設備清單查詢、單一設備詳細資訊、零件狀態等功能。
+    所有端點皆需要有效的 Session Token 才能存取。
+  version: 1.0.0
+  contact:
+    name: 熱泵遠端監控系統開發團隊
+
+servers:
+  - url: https://api.heatpump.example.com
+    description: 生產環境
+  - url: http://localhost:3000
+    description: 開發環境
+
+tags:
+  - name: 設備
+    description: 設備管理與狀態查詢
+
+paths:
+  /api/devices:
+    get:
+      tags:
+        - 設備
+      summary: 取得所有設備清單
+      description: |
+        取得系統中所有熱泵設備的清單，包含即時狀態、運作模式與燈號顏色。
+        
+        **回應資料包含**：
+        - 設備編號、名稱
+        - 運作狀態（NORMAL/ABNORMAL/OFFLINE）
+        - 運作模式（AUTO/MANUAL）
+        - 即時參數（溫度、壓力、COP 等）
+        - 最後更新時間
+        
+        **燈號顏色對應**：
+        - 綠燈：NORMAL（正常運作）
+        - 紅燈：ABNORMAL（參數異常）
+        - 灰燈：OFFLINE（設備離線）
+        
+        **效能考量**：本系統支援最多 50 台設備，採用全量載入策略，無需分頁。
+      operationId: getDevices
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 成功取得設備清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      devices:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeviceSummary'
+                      summary:
+                        type: object
+                        description: 全域總覽統計資訊
+                        properties:
+                          totalDevices:
+                            type: integer
+                            description: 總設備數量
+                            example: 5
+                          onlineDevices:
+                            type: integer
+                            description: 在線設備數量
+                            example: 4
+                          normalDevices:
+                            type: integer
+                            description: 正常運作設備數量
+                            example: 3
+                          abnormalDevices:
+                            type: integer
+                            description: 異常設備數量
+                            example: 1
+                          offlineDevices:
+                            type: integer
+                            description: 離線設備數量
+                            example: 1
+                          totalPowerConsumption:
+                            type: number
+                            format: float
+                            description: 總耗電量（kW）
+                            example: 120.5
+                          totalHeatOutput:
+                            type: number
+                            format: float
+                            description: 總產熱量（kW）
+                            example: 482.0
+                          averageCOP:
+                            type: number
+                            format: float
+                            description: 整體平均 COP
+                            example: 4.0
+              examples:
+                success:
+                  summary: 成功回應範例
+                  value:
+                    success: true
+                    data:
+                      devices:
+                        - deviceId: 1
+                          deviceCode: "HP-001"
+                          deviceName: "A站"
+                          status: "NORMAL"
+                          operationMode: "AUTO"
+                          currentCOP: 4.2
+                          instantPowerConsumption: 24.5
+                          instantHeatOutput: 102.9
+                          waterTankTemperature: 55.0
+                          lastDataReceivedAt: "2026-02-19T14:30:00Z"
+                        - deviceId: 2
+                          deviceCode: "HP-002"
+                          deviceName: "B站"
+                          status: "ABNORMAL"
+                          operationMode: "AUTO"
+                          currentCOP: 3.8
+                          instantPowerConsumption: 28.0
+                          instantHeatOutput: 106.4
+                          waterTankTemperature: 58.0
+                          exhaustTemperature: 92.5
+                          lastDataReceivedAt: "2026-02-19T14:30:15Z"
+                        - deviceId: 3
+                          deviceCode: "HP-003"
+                          deviceName: "C站"
+                          status: "OFFLINE"
+                          operationMode: "AUTO"
+                          currentCOP: null
+                          instantPowerConsumption: null
+                          instantHeatOutput: null
+                          waterTankTemperature: null
+                          lastDataReceivedAt: "2026-02-19T13:45:00Z"
+                      summary:
+                        totalDevices: 3
+                        onlineDevices: 2
+                        normalDevices: 1
+                        abnormalDevices: 1
+                        offlineDevices: 1
+                        totalPowerConsumption: 52.5
+                        totalHeatOutput: 209.3
+                        averageCOP: 4.0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/devices/{deviceId}:
+    get:
+      tags:
+        - 設備
+      summary: 取得單一設備詳細資訊
+      description: |
+        取得指定設備的完整資訊，包含所有即時參數、零件狀態與運作模式。
+        
+        **回應資料包含**：
+        - 設備基本資訊
+        - 所有即時監測參數（溫度、壓力、頻率等）
+        - 效能指標（耗電量、產熱量、COP）
+        - 零件狀態列表
+        - 最後控制時間（用於速率限制檢查）
+      operationId: getDeviceById
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: 設備 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 成功取得設備資訊
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/DeviceDetail'
+              examples:
+                normalDevice:
+                  summary: 正常運作的設備
+                  value:
+                    success: true
+                    data:
+                      deviceId: 1
+                      deviceCode: "HP-001"
+                      deviceName: "A站"
+                      status: "NORMAL"
+                      operationMode: "AUTO"
+                      parameters:
+                        compressorFrequency: 60.0
+                        exhaustTemperature: 82.5
+                        suctionTemperature: 15.3
+                        highPressure: 3.2
+                        lowPressure: 0.5
+                        waterTankTemperature: 55.0
+                        waterInTemperature: 15.0
+                        waterOutTemperature: 55.2
+                        targetWaterTemperature: null
+                      performance:
+                        instantPowerConsumption: 24.5
+                        instantHeatOutput: 102.9
+                        currentCOP: 4.2
+                      components:
+                        - componentId: 1
+                          componentCode: "HP-001-COMP"
+                          componentName: "壓縮機"
+                          componentType: "COMPRESSOR"
+                          status: "RUNNING"
+                        - componentId: 2
+                          componentCode: "HP-001-FAN1"
+                          componentName: "1號風扇"
+                          componentType: "FAN"
+                          status: "RUNNING"
+                        - componentId: 3
+                          componentCode: "HP-001-PUMP"
+                          componentName: "循環幫浦"
+                          componentType: "CIRCULATION_PUMP"
+                          status: "RUNNING"
+                      lastDataReceivedAt: "2026-02-19T14:30:00Z"
+                      lastControlledAt: "2026-02-19T14:25:00Z"
+                      updatedAt: "2026-02-19T14:30:00Z"
+                manualDevice:
+                  summary: 手動模式的設備（含目標溫度）
+                  value:
+                    success: true
+                    data:
+                      deviceId: 2
+                      deviceCode: "HP-002"
+                      deviceName: "B站"
+                      status: "NORMAL"
+                      operationMode: "MANUAL"
+                      parameters:
+                        compressorFrequency: 55.0
+                        exhaustTemperature: 78.0
+                        suctionTemperature: 14.5
+                        highPressure: 3.0
+                        lowPressure: 0.48
+                        waterTankTemperature: 60.0
+                        waterInTemperature: 15.5
+                        waterOutTemperature: 60.8
+                        targetWaterTemperature: 60.0
+                      performance:
+                        instantPowerConsumption: 22.0
+                        instantHeatOutput: 88.0
+                        currentCOP: 4.0
+                      components:
+                        - componentId: 4
+                          componentCode: "HP-002-COMP"
+                          componentName: "壓縮機"
+                          componentType: "COMPRESSOR"
+                          status: "RUNNING"
+                      lastDataReceivedAt: "2026-02-19T14:30:05Z"
+                      lastControlledAt: "2026-02-19T14:28:30Z"
+                      updatedAt: "2026-02-19T14:30:05Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/devices/{deviceId}/components:
+    get:
+      tags:
+        - 設備
+      summary: 取得設備零件清單
+      description: |
+        取得指定設備的所有零件資訊，包含零件名稱、類型與運作狀態。
+        
+        **用途**：顯示於設備頁面下方的零件狀態清單。
+      operationId: getDeviceComponents
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: 設備 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 成功取得零件清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      deviceId:
+                        type: integer
+                        example: 1
+                      components:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Component'
+              example:
+                success: true
+                data:
+                  deviceId: 1
+                  components:
+                    - componentId: 1
+                      componentCode: "HP-001-COMP"
+                      componentName: "壓縮機"
+                      componentType: "COMPRESSOR"
+                      status: "RUNNING"
+                      updatedAt: "2026-02-19T14:30:00Z"
+                    - componentId: 2
+                      componentCode: "HP-001-FAN1"
+                      componentName: "1號風扇"
+                      componentType: "FAN"
+                      status: "RUNNING"
+                      updatedAt: "2026-02-19T14:30:00Z"
+                    - componentId: 3
+                      componentCode: "HP-001-FAN2"
+                      componentName: "2號風扇"
+                      componentType: "FAN"
+                      status: "STOPPED"
+                      updatedAt: "2026-02-19T14:30:00Z"
+                    - componentId: 4
+                      componentCode: "HP-001-PUMP"
+                      componentName: "循環幫浦"
+                      componentType: "CIRCULATION_PUMP"
+                      status: "RUNNING"
+                      updatedAt: "2026-02-19T14:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionToken
+      description: Session Token（儲存於 HttpOnly Cookie）
+
+  schemas:
+    DeviceSummary:
+      type: object
+      description: 設備摘要資訊（用於設備清單）
+      properties:
+        deviceId:
+          type: integer
+          description: 設備 ID
+          example: 1
+        deviceCode:
+          type: string
+          description: 設備編號
+          example: "HP-001"
+        deviceName:
+          type: string
+          description: 設備名稱
+          example: "A站"
+        status:
+          type: string
+          description: 運作狀態
+          enum: [NORMAL, ABNORMAL, OFFLINE]
+          example: "NORMAL"
+        operationMode:
+          type: string
+          description: 運作模式
+          enum: [AUTO, MANUAL]
+          example: "AUTO"
+        currentCOP:
+          type: number
+          format: float
+          nullable: true
+          description: 當前 COP 值（設備離線時為 null）
+          example: 4.2
+        instantPowerConsumption:
+          type: number
+          format: float
+          nullable: true
+          description: 瞬時耗電量（kW，設備離線時為 null）
+          example: 24.5
+        instantHeatOutput:
+          type: number
+          format: float
+          nullable: true
+          description: 瞬時產熱量（kW，設備離線時為 null）
+          example: 102.9
+        waterTankTemperature:
+          type: number
+          format: float
+          nullable: true
+          description: 水箱溫度（°C，設備離線時為 null）
+          example: 55.0
+        exhaustTemperature:
+          type: number
+          format: float
+          nullable: true
+          description: 排氣溫度（°C，僅異常時才會顯示）
+          example: 92.5
+        lastDataReceivedAt:
+          type: string
+          format: date-time
+          description: 最後接收資料時間
+          example: "2026-02-19T14:30:00Z"
+
+    DeviceDetail:
+      type: object
+      description: 設備詳細資訊
+      properties:
+        deviceId:
+          type: integer
+          description: 設備 ID
+          example: 1
+        deviceCode:
+          type: string
+          description: 設備編號
+          example: "HP-001"
+        deviceName:
+          type: string
+          description: 設備名稱
+          example: "A站"
+        status:
+          type: string
+          description: 運作狀態
+          enum: [NORMAL, ABNORMAL, OFFLINE]
+          example: "NORMAL"
+        operationMode:
+          type: string
+          description: 運作模式
+          enum: [AUTO, MANUAL]
+          example: "AUTO"
+        parameters:
+          type: object
+          description: 即時監測參數
+          properties:
+            compressorFrequency:
+              type: number
+              format: float
+              nullable: true
+              description: 壓縮機頻率（Hz）
+              example: 60.0
+            exhaustTemperature:
+              type: number
+              format: float
+              nullable: true
+              description: 排氣溫度（°C）
+              example: 82.5
+            suctionTemperature:
+              type: number
+              format: float
+              nullable: true
+              description: 吸氣溫度（°C）
+              example: 15.3
+            highPressure:
+              type: number
+              format: float
+              nullable: true
+              description: 高壓壓力（MPa）
+              example: 3.2
+            lowPressure:
+              type: number
+              format: float
+              nullable: true
+              description: 低壓壓力（MPa）
+              example: 0.5
+            waterTankTemperature:
+              type: number
+              format: float
+              nullable: true
+              description: 水箱溫度（°C）
+              example: 55.0
+            waterInTemperature:
+              type: number
+              format: float
+              nullable: true
+              description: 入水溫度（°C）
+              example: 15.0
+            waterOutTemperature:
+              type: number
+              format: float
+              nullable: true
+              description: 出水溫度（°C）
+              example: 55.2
+            targetWaterTemperature:
+              type: number
+              format: float
+              nullable: true
+              description: 目標水溫（°C，僅手動模式）
+              example: 60.0
+        performance:
+          type: object
+          description: 效能指標
+          properties:
+            instantPowerConsumption:
+              type: number
+              format: float
+              nullable: true
+              description: 瞬時耗電量（kW）
+              example: 24.5
+            instantHeatOutput:
+              type: number
+              format: float
+              nullable: true
+              description: 瞬時產熱量（kW）
+              example: 102.9
+            currentCOP:
+              type: number
+              format: float
+              nullable: true
+              description: 當前 COP 值
+              example: 4.2
+        components:
+          type: array
+          description: 零件狀態列表
+          items:
+            $ref: '#/components/schemas/Component'
+        lastDataReceivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最後接收資料時間
+          example: "2026-02-19T14:30:00Z"
+        lastControlledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最後控制時間（用於速率限制檢查）
+          example: "2026-02-19T14:25:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: 資料最後更新時間
+          example: "2026-02-19T14:30:00Z"
+
+    Component:
+      type: object
+      description: 零件資訊
+      properties:
+        componentId:
+          type: integer
+          description: 零件 ID
+          example: 1
+        componentCode:
+          type: string
+          description: 零件編號
+          example: "HP-001-COMP"
+        componentName:
+          type: string
+          description: 零件名稱
+          example: "壓縮機"
+        componentType:
+          type: string
+          description: 零件類型
+          enum: [COMPRESSOR, FAN, CIRCULATION_PUMP, EXPANSION_VALVE, WATER_TANK, OTHER]
+          example: "COMPRESSOR"
+        status:
+          type: string
+          description: 運作狀態
+          enum: [RUNNING, STOPPED, ABNORMAL]
+          example: "RUNNING"
+        updatedAt:
+          type: string
+          format: date-time
+          description: 狀態更新時間
+          example: "2026-02-19T14:30:00Z"
+
+    ErrorResponse:
+      type: object
+      description: 標準錯誤回應格式
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: 錯誤代碼
+              example: "DEVICE_NOT_FOUND"
+            message:
+              type: string
+              description: 錯誤訊息（繁體中文）
+              example: "找不到指定的設備"
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    Unauthorized:
+      description: 未授權（Session 無效或過期）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "登入已過期，請重新登入"
+
+    NotFound:
+      description: 找不到指定的資源
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "DEVICE_NOT_FOUND"
+              message: "找不到指定的設備"
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "系統發生錯誤，請稍後再試"

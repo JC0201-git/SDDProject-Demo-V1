@@ -1,0 +1,301 @@
+openapi: 3.0.0
+info:
+  title: 認證 API
+  description: |
+    使用者登入、登出與 Session 管理。
+    
+    本 API 提供熱泵遠端監控系統的身份驗證功能，採用 Session-based Authentication 機制。
+    Session Token 儲存於 HttpOnly Cookie 中，有效期為 8 小時。
+  version: 1.0.0
+  contact:
+    name: 熱泵遠端監控系統開發團隊
+
+servers:
+  - url: https://api.heatpump.example.com
+    description: 生產環境
+  - url: http://localhost:3000
+    description: 開發環境
+
+tags:
+  - name: 認證
+    description: 使用者登入、登出與身份驗證
+
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - 認證
+      summary: 使用者登入
+      description: |
+        使用帳號與密碼進行身份驗證，成功後回傳 Session Token（儲存於 HttpOnly Cookie）。
+        
+        **安全機制**：
+        - 連續失敗 3 次後，該帳號鎖定 5 分鐘
+        - 密碼使用 bcrypt/Argon2 雜湊儲存
+        - Session 有效期為 8 小時
+        
+        **錯誤情境**：
+        - 帳號或密碼錯誤：回傳 401
+        - 帳號被鎖定：回傳 429（Too Many Requests）
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: 使用者帳號
+                  minLength: 3
+                  maxLength: 50
+                  example: "admin"
+                password:
+                  type: string
+                  description: 使用者密碼
+                  format: password
+                  minLength: 8
+                  maxLength: 100
+                  example: "password123"
+      responses:
+        '200':
+          description: 登入成功
+          headers:
+            Set-Cookie:
+              description: Session Token（HttpOnly Cookie）
+              schema:
+                type: string
+                example: "sessionToken=abc123xyz; HttpOnly; Secure; SameSite=Strict; Max-Age=28800"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "登入成功"
+                  data:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                        description: 使用者 ID
+                        example: 1
+                      username:
+                        type: string
+                        description: 使用者帳號
+                        example: "admin"
+                      displayName:
+                        type: string
+                        description: 顯示名稱
+                        example: "張經理"
+                      sessionExpiresAt:
+                        type: string
+                        format: date-time
+                        description: Session 過期時間（ISO 8601 格式）
+                        example: "2026-02-19T22:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: 帳號或密碼錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: "INVALID_CREDENTIALS"
+                  message: "帳號或密碼錯誤"
+        '429':
+          description: 帳號已被鎖定（連續失敗 3 次）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: "ACCOUNT_LOCKED"
+                  message: "帳號已被鎖定，請於 5 分鐘後再試"
+                  details:
+                    lockedUntil: "2026-02-19T14:35:00Z"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - 認證
+      summary: 使用者登出
+      description: |
+        銷毀當前 Session，清除 Cookie 中的 Session Token。
+        
+        **注意**：登出後，Session Token 立即失效，無法再次使用。
+      operationId: logout
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: 登出成功
+          headers:
+            Set-Cookie:
+              description: 清除 Session Cookie
+              schema:
+                type: string
+                example: "sessionToken=; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "登出成功"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/session:
+    get:
+      tags:
+        - 認證
+      summary: 檢查 Session 有效性
+      description: |
+        驗證當前 Session Token 是否有效，並回傳使用者資訊。
+        
+        **用途**：
+        - 前端應用啟動時，檢查使用者是否已登入
+        - 判斷 Session 是否過期
+        
+        **回應**：
+        - Session 有效：回傳 200 與使用者資訊
+        - Session 無效或過期：回傳 401
+      operationId: checkSession
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Session 有效
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                        description: 使用者 ID
+                        example: 1
+                      username:
+                        type: string
+                        description: 使用者帳號
+                        example: "admin"
+                      displayName:
+                        type: string
+                        description: 顯示名稱
+                        example: "張經理"
+                      sessionExpiresAt:
+                        type: string
+                        format: date-time
+                        description: Session 過期時間
+                        example: "2026-02-19T22:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionToken
+      description: Session Token（儲存於 HttpOnly Cookie）
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: 標準錯誤回應格式
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          description: 總是為 false（表示請求失敗）
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: 錯誤代碼（機器可讀）
+              example: "INVALID_CREDENTIALS"
+            message:
+              type: string
+              description: 錯誤訊息（人類可讀，繁體中文）
+              example: "帳號或密碼錯誤"
+            details:
+              type: object
+              description: 額外的錯誤細節（選填）
+              additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INVALID_REQUEST"
+              message: "請求參數格式錯誤"
+              details:
+                field: "username"
+                reason: "帳號長度必須在 3-50 字元之間"
+
+    Unauthorized:
+      description: 未授權（Session 無效或過期）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "登入已過期，請重新登入"
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "系統發生錯誤，請稍後再試"

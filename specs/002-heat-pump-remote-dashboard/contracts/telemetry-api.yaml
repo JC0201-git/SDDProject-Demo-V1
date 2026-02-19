@@ -1,0 +1,643 @@
+openapi: 3.0.0
+info:
+  title: 遙測資料 API
+  description: |
+    熱泵設備遙測資料查詢 API。
+    
+    本 API 提供設備最新遙測資料查詢、趨勢圖表資料查詢等功能。
+    遙測資料保存期限為 30 天，超過 30 天的資料會自動清理。
+  version: 1.0.0
+  contact:
+    name: 熱泵遠端監控系統開發團隊
+
+servers:
+  - url: https://api.heatpump.example.com
+    description: 生產環境
+  - url: http://localhost:3000
+    description: 開發環境
+
+tags:
+  - name: 遙測資料
+    description: 設備遙測資料查詢與趨勢分析
+
+paths:
+  /api/telemetry/{deviceId}/latest:
+    get:
+      tags:
+        - 遙測資料
+      summary: 取得設備最新遙測資料
+      description: |
+        取得指定設備的最新一筆遙測資料（所有參數）。
+        
+        **回應資料包含**：
+        - 所有監測參數（溫度、壓力、頻率等）
+        - 資料時間戳記
+        - 資料品質標記
+        
+        **注意**：若設備從未回報過資料或已離線，回傳空資料。
+      operationId: getLatestTelemetry
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: 設備 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 成功取得最新遙測資料
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    nullable: true
+                    properties:
+                      deviceId:
+                        type: integer
+                        description: 設備 ID
+                        example: 1
+                      timestamp:
+                        type: string
+                        format: date-time
+                        description: 資料時間戳記
+                        example: "2026-02-19T14:30:00Z"
+                      parameters:
+                        type: object
+                        description: 所有監測參數
+                        properties:
+                          exhaustTemperature:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 排氣溫度（°C）
+                            example: 82.5
+                          suctionTemperature:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 吸氣溫度（°C）
+                            example: 15.3
+                          waterInTemperature:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 入水溫度（°C）
+                            example: 15.0
+                          waterOutTemperature:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 出水溫度（°C）
+                            example: 55.2
+                          waterTankTemperature:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 水箱溫度（°C）
+                            example: 55.0
+                          highPressure:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 高壓壓力（MPa）
+                            example: 3.2
+                          lowPressure:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 低壓壓力（MPa）
+                            example: 0.5
+                          compressorFrequency:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 壓縮機頻率（Hz）
+                            example: 60.0
+                          powerConsumption:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 瞬時耗電量（kW）
+                            example: 24.5
+                          heatOutput:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 瞬時產熱量（kW）
+                            example: 102.9
+                          cop:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: COP 值
+                            example: 4.2
+              examples:
+                success:
+                  summary: 成功取得資料
+                  value:
+                    success: true
+                    data:
+                      deviceId: 1
+                      timestamp: "2026-02-19T14:30:00Z"
+                      parameters:
+                        exhaustTemperature: 82.5
+                        suctionTemperature: 15.3
+                        waterInTemperature: 15.0
+                        waterOutTemperature: 55.2
+                        waterTankTemperature: 55.0
+                        highPressure: 3.2
+                        lowPressure: 0.5
+                        compressorFrequency: 60.0
+                        powerConsumption: 24.5
+                        heatOutput: 102.9
+                        cop: 4.2
+                noData:
+                  summary: 設備尚無資料
+                  value:
+                    success: true
+                    data: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/telemetry/{deviceId}/trend:
+    get:
+      tags:
+        - 遙測資料
+      summary: 取得趨勢圖表資料
+      description: |
+        取得指定設備、指定參數、指定時間範圍的趨勢資料，用於繪製曲線圖。
+        
+        **查詢參數**：
+        - `parameter`（必填）：參數類型（如 EXHAUST_TEMPERATURE、HIGH_PRESSURE）
+        - `startTime`（必填）：起始時間（ISO 8601 格式）
+        - `endTime`（必填）：結束時間（ISO 8601 格式）
+        
+        **時間範圍限制**：
+        - 最長可查詢 30 天內的資料（系統保存期限）
+        - 若查詢範圍超過 30 天，會自動調整為最近 30 天
+        
+        **異常標記**：
+        - 回應中包含 `thresholds` 欄位，標示該參數的安全閾值
+        - 前端可依此繪製警戒線，並標記異常區段
+        
+        **資料品質**：
+        - 自動過濾 `dataQuality = ABNORMAL` 的資料點（明顯錯誤值）
+      operationId: getTelemetryTrend
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: 設備 ID
+          schema:
+            type: integer
+            example: 1
+        - name: parameter
+          in: query
+          required: true
+          description: 參數類型
+          schema:
+            type: string
+            enum:
+              - EXHAUST_TEMPERATURE
+              - SUCTION_TEMPERATURE
+              - WATER_IN_TEMPERATURE
+              - WATER_OUT_TEMPERATURE
+              - WATER_TANK_TEMPERATURE
+              - HIGH_PRESSURE
+              - LOW_PRESSURE
+              - COMPRESSOR_FREQUENCY
+              - POWER_CONSUMPTION
+              - HEAT_OUTPUT
+              - COP
+            example: "EXHAUST_TEMPERATURE"
+        - name: startTime
+          in: query
+          required: true
+          description: 起始時間（ISO 8601 格式）
+          schema:
+            type: string
+            format: date-time
+            example: "2026-02-19T10:00:00Z"
+        - name: endTime
+          in: query
+          required: true
+          description: 結束時間（ISO 8601 格式）
+          schema:
+            type: string
+            format: date-time
+            example: "2026-02-19T14:30:00Z"
+      responses:
+        '200':
+          description: 成功取得趨勢資料
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      deviceId:
+                        type: integer
+                        description: 設備 ID
+                        example: 1
+                      parameter:
+                        type: string
+                        description: 參數類型
+                        example: "EXHAUST_TEMPERATURE"
+                      unit:
+                        type: string
+                        description: 單位
+                        example: "°C"
+                      timeRange:
+                        type: object
+                        description: 實際查詢的時間範圍
+                        properties:
+                          startTime:
+                            type: string
+                            format: date-time
+                            example: "2026-02-19T10:00:00Z"
+                          endTime:
+                            type: string
+                            format: date-time
+                            example: "2026-02-19T14:30:00Z"
+                      dataPoints:
+                        type: array
+                        description: 資料點陣列（時間序列）
+                        items:
+                          type: object
+                          properties:
+                            timestamp:
+                              type: string
+                              format: date-time
+                              description: 時間戳記
+                              example: "2026-02-19T10:00:00Z"
+                            value:
+                              type: number
+                              format: float
+                              description: 數值
+                              example: 78.5
+                      thresholds:
+                        type: object
+                        nullable: true
+                        description: 安全閾值（用於繪製警戒線）
+                        properties:
+                          upperLimit:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 上限值（null 表示無上限）
+                            example: 85.0
+                          lowerLimit:
+                            type: number
+                            format: float
+                            nullable: true
+                            description: 下限值（null 表示無下限）
+                            example: null
+                          severity:
+                            type: string
+                            description: 嚴重程度
+                            enum: [WARNING, ERROR]
+                            example: "ERROR"
+              examples:
+                temperatureTrend:
+                  summary: 排氣溫度趨勢（含異常峰值）
+                  value:
+                    success: true
+                    data:
+                      deviceId: 1
+                      parameter: "EXHAUST_TEMPERATURE"
+                      unit: "°C"
+                      timeRange:
+                        startTime: "2026-02-19T10:00:00Z"
+                        endTime: "2026-02-19T14:30:00Z"
+                      dataPoints:
+                        - timestamp: "2026-02-19T10:00:00Z"
+                          value: 78.5
+                        - timestamp: "2026-02-19T10:30:00Z"
+                          value: 80.2
+                        - timestamp: "2026-02-19T11:00:00Z"
+                          value: 82.0
+                        - timestamp: "2026-02-19T11:30:00Z"
+                          value: 87.5
+                        - timestamp: "2026-02-19T12:00:00Z"
+                          value: 92.3
+                        - timestamp: "2026-02-19T12:30:00Z"
+                          value: 88.0
+                        - timestamp: "2026-02-19T13:00:00Z"
+                          value: 83.2
+                        - timestamp: "2026-02-19T13:30:00Z"
+                          value: 80.5
+                        - timestamp: "2026-02-19T14:00:00Z"
+                          value: 79.8
+                        - timestamp: "2026-02-19T14:30:00Z"
+                          value: 78.9
+                      thresholds:
+                        upperLimit: 85.0
+                        lowerLimit: null
+                        severity: "ERROR"
+                pressureTrend:
+                  summary: 高壓壓力趨勢（正常範圍）
+                  value:
+                    success: true
+                    data:
+                      deviceId: 1
+                      parameter: "HIGH_PRESSURE"
+                      unit: "MPa"
+                      timeRange:
+                        startTime: "2026-02-19T10:00:00Z"
+                        endTime: "2026-02-19T14:30:00Z"
+                      dataPoints:
+                        - timestamp: "2026-02-19T10:00:00Z"
+                          value: 3.0
+                        - timestamp: "2026-02-19T10:30:00Z"
+                          value: 3.1
+                        - timestamp: "2026-02-19T11:00:00Z"
+                          value: 3.2
+                        - timestamp: "2026-02-19T11:30:00Z"
+                          value: 3.3
+                        - timestamp: "2026-02-19T12:00:00Z"
+                          value: 3.2
+                        - timestamp: "2026-02-19T12:30:00Z"
+                          value: 3.1
+                        - timestamp: "2026-02-19T13:00:00Z"
+                          value: 3.0
+                        - timestamp: "2026-02-19T13:30:00Z"
+                          value: 2.9
+                        - timestamp: "2026-02-19T14:00:00Z"
+                          value: 3.0
+                        - timestamp: "2026-02-19T14:30:00Z"
+                          value: 3.1
+                      thresholds:
+                        upperLimit: 3.5
+                        lowerLimit: null
+                        severity: "ERROR"
+        '400':
+          description: 請求參數錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingParameter:
+                  summary: 缺少必填參數
+                  value:
+                    success: false
+                    error:
+                      code: "INVALID_REQUEST"
+                      message: "缺少必填參數"
+                      details:
+                        field: "parameter"
+                        reason: "參數類型為必填欄位"
+                invalidTimeRange:
+                  summary: 時間範圍無效
+                  value:
+                    success: false
+                    error:
+                      code: "INVALID_TIME_RANGE"
+                      message: "時間範圍無效"
+                      details:
+                        reason: "結束時間必須晚於起始時間"
+                timeRangeTooLarge:
+                  summary: 時間範圍超過 30 天
+                  value:
+                    success: false
+                    error:
+                      code: "TIME_RANGE_TOO_LARGE"
+                      message: "時間範圍超過 30 天"
+                      details:
+                        maxDays: 30
+                        reason: "系統僅保存最近 30 天的資料"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/telemetry/{deviceId}:
+    post:
+      tags:
+        - 遙測資料
+      summary: 儲存遙測資料
+      description: |
+        儲存設備回報的遙測資料點。
+        
+        **注意**：此端點僅供 MQTT 服務內部呼叫，不對外開放。
+        前端應用不應直接呼叫此端點。
+        
+        **使用場景**：
+        - MQTT 服務接收到設備發布的遙測資料後，呼叫此端點將資料儲存至資料庫
+        - 同時更新設備表中的即時參數快取
+        - 檢查是否超過安全閾值，並產生通知訊息
+      operationId: createTelemetryData
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: 設備 ID
+          schema:
+            type: integer
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - timestamp
+                - parameters
+              properties:
+                timestamp:
+                  type: string
+                  format: date-time
+                  description: 資料時間戳記
+                  example: "2026-02-19T14:30:00Z"
+                parameters:
+                  type: object
+                  description: 所有監測參數
+                  properties:
+                    exhaustTemperature:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 82.5
+                    suctionTemperature:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 15.3
+                    waterInTemperature:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 15.0
+                    waterOutTemperature:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 55.2
+                    waterTankTemperature:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 55.0
+                    highPressure:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 3.2
+                    lowPressure:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 0.5
+                    compressorFrequency:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 60.0
+                    powerConsumption:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 24.5
+                    heatOutput:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 102.9
+                    cop:
+                      type: number
+                      format: float
+                      nullable: true
+                      example: 4.2
+      responses:
+        '201':
+          description: 遙測資料已成功儲存
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "遙測資料已儲存"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sessionToken
+      description: Session Token（儲存於 HttpOnly Cookie）
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: 標準錯誤回應格式
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: 錯誤代碼
+              example: "DEVICE_NOT_FOUND"
+            message:
+              type: string
+              description: 錯誤訊息（繁體中文）
+              example: "找不到指定的設備"
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INVALID_REQUEST"
+              message: "請求參數格式錯誤"
+
+    Unauthorized:
+      description: 未授權（Session 無效或過期）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "登入已過期，請重新登入"
+
+    NotFound:
+      description: 找不到指定的資源
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "DEVICE_NOT_FOUND"
+              message: "找不到指定的設備"
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "系統發生錯誤，請稍後再試"
