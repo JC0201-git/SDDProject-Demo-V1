@@ -88,7 +88,7 @@
 
 - [ ] T033 [P] 建立前端應用入口：建立 frontend/src/main.tsx，初始化 React 應用、掛載至 DOM、套用全域樣式
 - [ ] T034 [P] 建立路由配置：建立 frontend/src/routes.tsx，使用 React Router v6+ 定義路由（/, /login, /dashboard, /devices/:id）
-- [ ] T035 [P] 建立 Axios HTTP 客戶端：建立 frontend/src/services/api/client.ts，配置 baseURL、timeout、攔截器（自動附帶 Cookie、統一錯誤提示）
+- [ ] T035 [P] 建立 Axios HTTP 客戶端：建立 frontend/src/services/api/client.ts，配置 baseURL、timeout、請求攔截器（自動附帶 Cookie）與回應攔截器（統一錯誤提示、自動偵測 401 錯誤時清除本地 Session 並導向登入頁）
 - [ ] T036 [P] 建立全域狀態 Store：建立 frontend/src/store/authStore.ts（使用 Zustand，管理使用者登入狀態）、frontend/src/store/uiStore.ts（管理側邊欄展開、Loading 狀態）
 - [ ] T037 [P] 建立 TypeScript 型別定義：建立 frontend/src/types/models.ts、frontend/src/types/api.ts、frontend/src/types/enums.ts（與後端 API 回應格式一致）
 - [ ] T038 [P] 建立全域樣式與 CSS 變數：建立 frontend/src/styles/global.css、frontend/src/styles/variables.css（定義色彩、間距、斷點）
@@ -112,11 +112,11 @@
 - [ ] T043 [P] [US1] 建立 SafetyThreshold 模型層：建立 backend/src/models/threshold.ts，定義閾值配置介面
 - [ ] T044 [US1] 實作閾值檢測服務：建立 backend/src/services/threshold.ts，實作參數超過閾值檢測邏輯（比對 SafetyThreshold 表，判斷是否異常）
 - [ ] T045 [US1] 實作通知生成服務：建立 backend/src/services/notification.ts，包含產生異常通知、設備離線通知、標記已讀等邏輯
-- [ ] T046 [US1] 實作設備管理服務：建立 backend/src/services/device.ts，包含查詢所有設備、計算總覽統計資訊（在線數、總耗電、總產熱、平均COP）、設備離線偵測邏輯
+- [ ] T046 [US1] 實作設備管理服務：建立 backend/src/services/device.ts，包含查詢所有設備、計算總覽統計資訊（在線數、總耗電、總產熱、平均COP）、設備離線偵測邏輯（含防抖機制：持續 30 秒無資料才標記 OFFLINE；連續 2 次資料才標記 ONLINE）。多人控制策略：不檢查設備控制權歸屬，所有指令直接發送至 MQTT，採用 Last-Write-Wins（最後指令優先）策略
 - [ ] T047 [US1] 實作設備 API 路由：建立 backend/src/api/routes/devices.ts，實作 GET /api/devices（回傳設備清單與總覽資訊），參考 contracts/device-api.yaml 第 1-100 行
 - [ ] T048 [US1] 實作通知 API 路由：建立 backend/src/api/routes/notifications.ts，實作 GET /api/notifications（查詢通知清單）、PATCH /api/notifications/:id/read（標記已讀）、GET /api/notifications/unread-count（未讀數量），參考 contracts/notification-api.yaml
 - [ ] T049 [US1] 整合異常檢測至 MQTT 處理器：修改 backend/src/services/mqtt.ts，當接收到遙測資料時，呼叫閾值檢測服務，若異常則更新設備狀態並產生通知
-- [ ] T050 [US1] 整合設備離線偵測至定時任務：修改 backend/src/services/cleanup.ts，每分鐘檢查所有設備的 lastDataReceivedAt，若超過 30 秒則標記為 OFFLINE 並產生通知
+- [ ] T050 [US1] 整合設備離線偵測至定時任務：修改 backend/src/services/cleanup.ts，每分鐘檢查所有設備的 lastDataReceivedAt，實作防抖邏輯避免頻繁切換：持續超過 30 秒無資料才標記為 OFFLINE（並產生通知）；設備恢復後需連續接收 2 次資料（約 1 分鐘）才標記為 ONLINE，避免網路抖動造成燈號閃爍
 
 ### 前端 UI 實作（User Story 1）
 
@@ -128,12 +128,12 @@
 - [ ] T056 [P] [US1] 建立設備卡片元件：建立 frontend/src/components/molecules/DeviceCard（展示元件，接收設備資料 props，顯示設備名稱、燈號、即時參數）
 - [ ] T057 [P] [US1] 建立通知項目元件：建立 frontend/src/components/molecules/NotificationItem（顯示事件類型、時間、描述、已讀標記）
 - [ ] T058 [US1] 建立設備清單元件：建立 frontend/src/components/organisms/DeviceList（有機體元件，渲染多個 DeviceCard，處理點擊導航至詳細頁面）
-- [ ] T059 [US1] 建立通知中心元件：建立 frontend/src/components/organisms/NotificationCenter（下拉面板，顯示通知清單，支援標記已讀、載入更多）
+- [ ] T059 [US1] 建立通知中心元件：建立 frontend/src/components/organisms/NotificationCenter（下拉面板，初始載入最近 50 則通知，支援「載入更多」按鈕增量載入舊通知。未讀數量顯示邏輯：≤99 則顯示實際數字，>99 則顯示「99+」。支援標記已讀功能，點擊通知項目時自動標記為已讀）
 - [ ] T060 [US1] 建立全域總覽統計元件：建立 frontend/src/components/organisms/GlobalSummary（顯示在線設備數、總耗電量、總產熱量、整體COP 四個數字卡片）
 - [ ] T061 [US1] 建立儀表板佈局模板：建立 frontend/src/components/templates/DashboardLayout（包含頂部總覽區、左側設備清單、中央內容區、右上角通知圖示）
 - [ ] T062 [US1] 建立儀表板頁面容器：建立 frontend/src/pages/DashboardPage/DashboardPage.tsx（容器元件，使用 React Query 獲取設備清單與總覽資料，整合 DashboardLayout、GlobalSummary、DeviceList、NotificationCenter）
 - [ ] T063 [US1] 實作 WebSocket 即時更新：建立 frontend/src/services/websocket/client.ts，連接至 `/realtime` 命名空間，監聽 `device:telemetry:update` 事件，自動更新儀表板資料（使用 React Query 的 queryClient.invalidateQueries）
-- [ ] T064 [US1] 實作受保護路由：修改 frontend/src/routes.tsx，加入認證檢查，未登入時重新導向至 /login
+- [ ] T064 [US1] 實作受保護路由與 Session 管理：修改 frontend/src/routes.tsx，加入認證檢查，未登入時重新導向至 /login。實作 Session 過期邏輯：記錄最後操作時間，8 小時無任何 API 請求或使用者互動時，前端主動呼叫 logout API 並導向登入頁，顯示「登入已過期，請重新登入」訊息
 - [ ] T065 [US1] 實作 Loading 與錯誤狀態：在 DashboardPage 加入 Skeleton Screens（載入時）、錯誤提示（網路異常時）、Empty State（無設備時）
 
 **檢查點**：此時 User Story 1 應完全可用且可獨立測試（登入 → 查看儀表板 → 看到設備狀態與通知）
@@ -179,7 +179,7 @@
 - [ ] T078 [P] [US3] 建立 TelemetryData 模型層：建立 backend/src/models/telemetry.ts，定義遙測資料實體介面
 - [ ] T079 [US3] 擴充遙測資料處理服務：修改 backend/src/services/telemetry.ts，新增查詢歷史趨勢資料邏輯（依 deviceId、parameter、timeRange 查詢，支援資料降採樣）
 - [ ] T080 [US3] 實作遙測資料 API 路由：建立 backend/src/api/routes/telemetry.ts，實作 GET /api/telemetry/:deviceId/latest（最新資料）、GET /api/telemetry/:deviceId/trend（趨勢資料，支援 parameter、startTime、endTime 參數），參考 contracts/telemetry-api.yaml
-- [ ] T081 [US3] 實作資料降採樣邏輯：在 backend/src/services/telemetry.ts 加入降採樣演算法（當查詢時間範圍過長時，自動降低資料點密度，例如 30 天查詢時每小時一筆）
+- [ ] T081 [US3] 實作資料降採樣邏輯：在 backend/src/services/telemetry.ts 加入降採樣演算法，根據查詢時間範圍自動選擇採樣策略：≤6小時使用全量資料（每30秒一筆）；6-24小時每5分鐘計算平均值；1-7天每30分鐘；7-30天每1小時。溫度與壓力使用平均值聚合，異常標記使用最大值（任一時段有異常則標記為異常），確保圖表效能與可讀性
 
 ### 前端 UI 實作（User Story 3）
 
