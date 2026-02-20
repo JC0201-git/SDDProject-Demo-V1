@@ -25,9 +25,9 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       username: 'admin',
+      displayName: '系統管理員',
       passwordHash: hashedPassword,
-      failedLoginAttempts: 0,
-      isLocked: false,
+      loginFailedCount: 0,
     },
   });
 
@@ -41,48 +41,35 @@ async function main() {
       parameter: 'EXHAUST_TEMPERATURE' as const,
       upperLimit: 120.0,
       lowerLimit: 30.0,
-      severity: 'WARNING' as const,
-    },
-    {
-      parameter: 'SUCTION_TEMPERATURE' as const,
-      upperLimit: 30.0,
-      lowerLimit: -10.0,
-      severity: 'WARNING' as const,
-    },
-    {
-      parameter: 'WATER_IN_TEMPERATURE' as const,
-      upperLimit: 60.0,
-      lowerLimit: 5.0,
-      severity: 'INFO' as const,
-    },
-    {
-      parameter: 'WATER_OUT_TEMPERATURE' as const,
-      upperLimit: 70.0,
-      lowerLimit: 10.0,
+      unit: '°C',
       severity: 'WARNING' as const,
     },
     {
       parameter: 'WATER_TANK_TEMPERATURE' as const,
       upperLimit: 75.0,
       lowerLimit: 15.0,
+      unit: '°C',
       severity: 'WARNING' as const,
     },
     {
       parameter: 'HIGH_PRESSURE' as const,
       upperLimit: 3.5,
       lowerLimit: 1.0,
+      unit: 'MPa',
       severity: 'ERROR' as const,
     },
     {
       parameter: 'LOW_PRESSURE' as const,
       upperLimit: 1.0,
       lowerLimit: 0.2,
+      unit: 'MPa',
       severity: 'ERROR' as const,
     },
     {
       parameter: 'COMPRESSOR_FREQUENCY' as const,
       upperLimit: 120.0,
       lowerLimit: 20.0,
+      unit: 'Hz',
       severity: 'WARNING' as const,
     },
   ];

@@ -1,0 +1,31 @@
+.global-summary {
+  margin-bottom: 24px;
+}
+
+.global-summary .ant-card {
+  border-radius: 8px;
+}
+
+.global-summary .ant-statistic-title {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.global-summary .ant-statistic-content {
+  font-size: 24px;
+}
+
+.global-summary .anticon {
+  font-size: 24px;
+  margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+  .global-summary .ant-statistic-content {
+    font-size: 20px;
+  }
+  
+  .global-summary .anticon {
+    font-size: 20px;
+  }
+}

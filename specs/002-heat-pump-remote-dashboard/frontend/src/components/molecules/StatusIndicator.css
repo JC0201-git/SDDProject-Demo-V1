@@ -1,0 +1,21 @@
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-indicator-small .status-text {
+  font-size: 12px;
+}
+
+.status-indicator-default .status-text {
+  font-size: 14px;
+}
+
+.status-indicator-large .status-text {
+  font-size: 16px;
+}
+
+.status-text {
+  color: rgba(0, 0, 0, 0.85);
+}
