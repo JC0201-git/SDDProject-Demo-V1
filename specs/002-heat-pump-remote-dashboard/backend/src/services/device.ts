@@ -77,19 +77,19 @@ export class DeviceService {
    * 計算全域總覽統計資訊
    */
   private calculateGlobalSummary(devices: DeviceModel[]): GlobalSummary {
-    let onlineDeviceCount = 0;
+    let normalCount = 0;
+    let abnormalCount = 0;
+    let offlineCount = 0;
     let totalPowerConsumption = 0;
     let totalHeatOutput = 0;
     let copSum = 0;
     let copCount = 0;
 
     for (const device of devices) {
-      // 計算在線設備數（NORMAL 或 ABNORMAL 視為在線）
-      if (device.status === 'NORMAL' || device.status === 'ABNORMAL') {
-        onlineDeviceCount++;
-      }
+      if (device.status === 'NORMAL') normalCount++;
+      else if (device.status === 'ABNORMAL') abnormalCount++;
+      else offlineCount++;
 
-      // 累加耗電量與產熱量
       if (device.instantPowerConsumption !== null) {
         totalPowerConsumption += device.instantPowerConsumption;
       }
@@ -97,21 +97,23 @@ export class DeviceService {
         totalHeatOutput += device.instantHeatOutput;
       }
 
-      // 累加 COP（用於計算平均值）
       if (device.currentCOP !== null && device.currentCOP > 0) {
         copSum += device.currentCOP;
         copCount++;
       }
     }
 
-    // 計算平均 COP
     const averageCOP = copCount > 0 ? copSum / copCount : 0;
 
     return {
-      onlineDeviceCount,
-      totalPowerConsumption: Math.round(totalPowerConsumption * 10) / 10, // 保留 1 位小數
+      totalDevices: devices.length,
+      onlineDevices: normalCount + abnormalCount,
+      normalDevices: normalCount,
+      abnormalDevices: abnormalCount,
+      offlineDevices: offlineCount,
+      totalPowerConsumption: Math.round(totalPowerConsumption * 10) / 10,
       totalHeatOutput: Math.round(totalHeatOutput * 10) / 10,
-      averageCOP: Math.round(averageCOP * 100) / 100, // 保留 2 位小數
+      averageCOP: Math.round(averageCOP * 100) / 100,
     };
   }
 

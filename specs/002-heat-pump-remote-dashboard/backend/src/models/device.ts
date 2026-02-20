@@ -45,25 +45,34 @@ export interface DeviceModel {
 
 /**
  * 設備清單項目（用於全域儀表板顯示）
+ * 欄位名稱對齊前端 DeviceSummary 型別定義
  */
 export interface DeviceListItem {
-  id: number;
+  deviceId: number;
   deviceCode: string;
+  serialNumber: string;
   deviceName: string;
   status: DeviceStatus;
-  statusLight: StatusLightColor;
+  indicatorColor: StatusLightColor;
   operationMode: OperationMode;
-  currentCOP: number | null;
-  instantPowerConsumption: number | null;
-  waterTankTemperature: number | null;
+  cop: number | null;
+  powerConsumption: number | null;
+  heatOutput: number | null;
+  currentTemperature: number | null;
+  targetTemperature: number | null;
   lastDataReceivedAt: Date | null;
 }
 
 /**
  * 全域總覽統計資料
+ * 欄位名稱對齊前端 GlobalSummary 型別定義
  */
 export interface GlobalSummary {
-  onlineDeviceCount: number;
+  totalDevices: number;
+  onlineDevices: number;
+  normalDevices: number;
+  abnormalDevices: number;
+  offlineDevices: number;
   totalPowerConsumption: number;
   totalHeatOutput: number;
   averageCOP: number;
@@ -101,15 +110,18 @@ export function getStatusLightColor(status: DeviceStatus): StatusLightColor {
  */
 export function toDeviceListItem(device: DeviceModel): DeviceListItem {
   return {
-    id: device.id,
+    deviceId: device.id,
     deviceCode: device.deviceCode,
+    serialNumber: device.deviceCode,
     deviceName: device.deviceName,
     status: device.status,
-    statusLight: getStatusLightColor(device.status),
+    indicatorColor: getStatusLightColor(device.status),
     operationMode: device.operationMode,
-    currentCOP: device.currentCOP,
-    instantPowerConsumption: device.instantPowerConsumption,
-    waterTankTemperature: device.waterTankTemperature,
+    cop: device.currentCOP,
+    powerConsumption: device.instantPowerConsumption,
+    heatOutput: device.instantHeatOutput,
+    currentTemperature: device.waterTankTemperature,
+    targetTemperature: device.targetWaterTemperature,
     lastDataReceivedAt: device.lastDataReceivedAt,
   };
 }

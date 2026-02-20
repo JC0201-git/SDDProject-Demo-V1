@@ -24,15 +24,15 @@ export interface NotificationModel {
 
 /**
  * 通知清單項目（用於前端顯示）
+ * 欄位名稱對齊前端 Notification 型別定義
  */
 export interface NotificationListItem {
-  id: number;
+  notificationId: number;
   eventType: NotificationEventType;
   severity: NotificationSeverity;
   deviceId: number;
   deviceName?: string;
-  title: string;
-  description: string;
+  message: string;
   occurredAt: Date;
   isRead: boolean;
   readAt: Date | null;

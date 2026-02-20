@@ -165,13 +165,12 @@ export class NotificationService {
       });
 
       const notificationList: NotificationListItem[] = notifications.map((n) => ({
-        id: n.id,
+        notificationId: n.id,
         eventType: n.eventType,
         severity: n.severity,
         deviceId: n.deviceId,
         deviceName: n.device.deviceName,
-        title: n.title,
-        description: n.description,
+        message: n.title,
         occurredAt: n.occurredAt,
         isRead: n.isRead,
         readAt: n.readAt,
