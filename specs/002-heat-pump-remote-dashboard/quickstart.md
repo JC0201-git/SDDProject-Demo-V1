@@ -29,7 +29,7 @@
 | 軟體 | 版本要求 | 安裝方式 |
 |------|---------|---------|
 | **Node.js** | ≥ 20.x LTS | [官網下載](https://nodejs.org/) 或使用 nvm |
-| **pnpm** | ≥ 8.x | `npm install -g pnpm` |
+| **npm** | ≥ 10.x（隨 Node.js 附帶） | 隨 Node.js 安裝自動包含 |
 | **PostgreSQL** | ≥ 15.x | [官網下載](https://www.postgresql.org/download/) 或使用 Homebrew/Docker |
 | **Mosquitto** | ≥ 2.0.x | [官網下載](https://mosquitto.org/download/) 或使用 Homebrew/Docker |
 
@@ -63,11 +63,11 @@ git checkout 002-heat-pump-remote-dashboard
 ```bash
 # 後端依賴
 cd backend
-pnpm install
+npm install
 
 # 前端依賴
 cd ../frontend
-pnpm install
+npm install
 ```
 
 ### 3. 啟動資料庫與 MQTT Broker
@@ -159,7 +159,7 @@ npx prisma migrate dev --name init
 npx prisma generate
 
 # 插入種子資料（測試帳號、設備、閾值）
-npx prisma db seed
+npm run prisma:seed
 ```
 
 **預設測試帳號**：
@@ -172,7 +172,7 @@ npx prisma db seed
 
 ```bash
 cd backend
-pnpm dev
+npm run dev
 ```
 
 預期輸出：
@@ -187,7 +187,7 @@ pnpm dev
 
 ```bash
 cd frontend
-pnpm dev
+npm run dev
 ```
 
 預期輸出：
@@ -369,13 +369,13 @@ git checkout -b feature/your-feature-name
 
 ```bash
 # 執行測試（監視模式）
-pnpm test:watch
+npm run test:watch
 
 # 執行程式碼檢查
-pnpm lint
+npm run lint
 
 # 自動修復程式碼格式
-pnpm format
+npm run format
 ```
 
 ### 3. 提交程式碼
@@ -568,7 +568,7 @@ export async function fetchYourData() {
 
 ```bash
 # 使用元件產生器（若有設置）
-pnpm generate:component YourComponent
+npm run generate:component YourComponent
 
 # 或手動建立
 mkdir -p frontend/src/components/molecules/YourComponent
@@ -614,19 +614,19 @@ window.useAuthStore.getState()
 
 ```bash
 cd backend
-pnpm test
+npm run test
 ```
 
 #### 執行特定測試檔案
 
 ```bash
-pnpm test src/services/auth.service.test.ts
+npm run test src/services/auth.service.test.ts
 ```
 
 #### 執行測試並產生覆蓋率報告
 
 ```bash
-pnpm test:coverage
+npm run test:coverage
 ```
 
 預期輸出：
@@ -645,7 +645,7 @@ Coverage:    85.4% Statements
 #### 執行監視模式
 
 ```bash
-pnpm test:watch
+npm run test:watch
 ```
 
 ### 前端測試
@@ -654,19 +654,19 @@ pnpm test:watch
 
 ```bash
 cd frontend
-pnpm test
+npm run test
 ```
 
 #### 執行特定測試檔案
 
 ```bash
-pnpm test src/components/DeviceCard/DeviceCard.test.tsx
+npm run test src/components/DeviceCard/DeviceCard.test.tsx
 ```
 
 #### 執行 E2E 測試（Playwright）
 
 ```bash
-pnpm test:e2e
+npm run test:e2e
 ```
 
 ### 程式碼覆蓋率要求
@@ -778,12 +778,12 @@ async function resetPassword(username: string, newPlainPassword: string) {
   console.log(`📧 請將新密碼告知使用者：${newPlainPassword}`);
 }
 
-// 使用範例：pnpm tsx backend/scripts/reset-password.ts
+// 使用範例：npx tsx backend/scripts/reset-password.ts
 const username = process.argv[2];
 const newPassword = process.argv[3];
 
 if (!username || !newPassword) {
-  console.error('❌ 用法：pnpm tsx backend/scripts/reset-password.ts <使用者名稱> <新密碼>');
+  console.error('❌ 用法：npx tsx backend/scripts/reset-password.ts <使用者名稱> <新密碼>');
   process.exit(1);
 }
 
@@ -799,7 +799,7 @@ resetPassword(username, newPassword)
 執行方式：
 ```bash
 cd backend
-pnpm tsx scripts/reset-password.ts admin NewPassword123
+npx tsx scripts/reset-password.ts admin NewPassword123
 ```
 
 ### 清除帳號鎖定狀態
@@ -820,7 +820,7 @@ WHERE "username" = 'admin';
 
 ```bash
 cd backend
-pnpm tsx src/services/cleanup.ts --execute
+npx tsx src/services/cleanup.ts --execute
 ```
 
 ---
@@ -975,34 +975,34 @@ Error: Migration failed: relation "users" already exists
 
 | 指令 | 用途 |
 |------|------|
-| `pnpm dev` | 啟動開發伺服器（熱重載） |
-| `pnpm build` | 建置生產版本 |
-| `pnpm start` | 執行生產版本 |
-| `pnpm test` | 執行所有測試 |
-| `pnpm test:watch` | 測試監視模式 |
-| `pnpm test:coverage` | 測試覆蓋率報告 |
-| `pnpm lint` | 執行 ESLint 檢查 |
-| `pnpm lint:fix` | 自動修復 ESLint 錯誤 |
-| `pnpm format` | 執行 Prettier 格式化 |
-| `npx prisma migrate dev` | 建立資料庫遷移 |
-| `npx prisma generate` | 產生 Prisma Client |
-| `npx prisma studio` | 開啟 Prisma Studio（資料庫 GUI） |
-| `npx prisma db seed` | 插入種子資料 |
+| `npm run dev` | 啟動開發伺服器（熱重載） |
+| `npm run build` | 建置生產版本 |
+| `npm run start` | 執行生產版本 |
+| `npm run test` | 執行所有測試 |
+| `npm run test:watch` | 測試監視模式 |
+| `npm run test:coverage` | 測試覆蓋率報告 |
+| `npm run lint` | 執行 ESLint 檢查 |
+| `npm run lint:fix` | 自動修復 ESLint 錯誤 |
+| `npm run format` | 執行 Prettier 格式化 |
+| `npm run prisma:migrate` | 建立資料庫遷移 |
+| `npm run prisma:generate` | 產生 Prisma Client |
+| `npm run prisma:studio` | 開啟 Prisma Studio（資料庫 GUI） |
+| `npm run prisma:seed` | 插入種子資料 |
 
 ### 前端指令
 
 | 指令 | 用途 |
 |------|------|
-| `pnpm dev` | 啟動開發伺服器 |
-| `pnpm build` | 建置生產版本 |
-| `pnpm preview` | 預覽生產版本 |
-| `pnpm test` | 執行所有測試 |
-| `pnpm test:ui` | 開啟 Vitest UI |
-| `pnpm test:e2e` | 執行 E2E 測試 |
-| `pnpm lint` | 執行 ESLint 檢查 |
-| `pnpm lint:fix` | 自動修復 ESLint 錯誤 |
-| `pnpm format` | 執行 Prettier 格式化 |
-| `pnpm type-check` | 執行 TypeScript 型別檢查 |
+| `npm run dev` | 啟動開發伺服器 |
+| `npm run build` | 建置生產版本 |
+| `npm run preview` | 預覽生產版本 |
+| `npm run test` | 執行所有測試 |
+| `npm run test:ui` | 開啟 Vitest UI |
+| `npm run test:e2e` | 執行 E2E 測試 |
+| `npm run lint` | 執行 ESLint 檢查 |
+| `npm run lint:fix` | 自動修復 ESLint 錯誤 |
+| `npm run format` | 執行 Prettier 格式化 |
+| `npm run type-check` | 執行 TypeScript 型別檢查 |
 
 ### Docker 指令
 
