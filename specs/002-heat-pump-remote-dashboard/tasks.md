@@ -26,15 +26,15 @@
 
 **目的**：建立專案基礎結構與開發環境
 
-- [ ] T001 根據 plan.md 第 246-313 行建立完整的專案目錄結構（backend/ 與 frontend/）
-- [ ] T002 [P] 初始化後端專案：建立 backend/package.json，安裝 Fastify v4.25+、Prisma v5.8+、TypeScript v5+、mqtt.js v5.3+、socket.io v4.6+ 等依賴項目
-- [ ] T003 [P] 初始化前端專案：建立 frontend/package.json，安裝 React 18+、TypeScript 5+、Ant Design/Material-UI、Recharts/ECharts、React Router v6+、Zustand/React Query 等依賴項目
-- [ ] T004 [P] 配置後端 TypeScript：建立 backend/tsconfig.json，啟用 strict mode、path aliases (@/*) 等設定
-- [ ] T005 [P] 配置前端 TypeScript：建立 frontend/tsconfig.json，設定 JSX、DOM types、path aliases 等
-- [ ] T006 [P] 配置 ESLint 與 Prettier：建立 backend/.eslintrc.js 與 frontend/.eslintrc.js，套用 TypeScript 規則
-- [ ] T007 [P] 建立環境變數範本：建立 backend/.env.example 與 frontend/.env.example（包含資料庫、MQTT、API URL 等配置）
-- [ ] T008 建立 Docker Compose 配置檔：建立 docker-compose.yml，定義 PostgreSQL、Mosquitto MQTT Broker、Redis 等服務
-- [ ] T009 [P] 建立 README.md：包含專案簡介、快速啟動指令、技術堆疊說明
+- [X] T001 根據 plan.md 第 246-313 行建立完整的專案目錄結構（backend/ 與 frontend/）
+- [X] T002 [P] 初始化後端專案：建立 backend/package.json，安裝 Fastify v4.25+、Prisma v5.8+、TypeScript v5+、mqtt.js v5.3+、socket.io v4.6+ 等依賴項目
+- [X] T003 [P] 初始化前端專案：建立 frontend/package.json，安裝 React 18+、TypeScript 5+、Ant Design/Material-UI、Recharts/ECharts、React Router v6+、Zustand/React Query 等依賴項目
+- [X] T004 [P] 配置後端 TypeScript：建立 backend/tsconfig.json，啟用 strict mode、path aliases (@/*) 等設定
+- [X] T005 [P] 配置前端 TypeScript：建立 frontend/tsconfig.json，設定 JSX、DOM types、path aliases 等
+- [X] T006 [P] 配置 ESLint 與 Prettier：建立 backend/.eslintrc.js 與 frontend/.eslintrc.js，套用 TypeScript 規則
+- [X] T007 [P] 建立環境變數範本：建立 backend/.env.example 與 frontend/.env.example（包含資料庫、MQTT、API URL 等配置）
+- [X] T008 建立 Docker Compose 配置檔：建立 docker-compose.yml，定義 PostgreSQL、Mosquitto MQTT Broker、Redis 等服務
+- [X] T009 [P] 建立 README.md：包含專案簡介、快速啟動指令、技術堆疊說明
 
 **檢查點**：專案結構完整，開發環境可啟動
 
@@ -48,52 +48,52 @@
 
 ### 資料庫與資料模型
 
-- [ ] T010 建立 Prisma Schema：在 backend/prisma/schema.prisma 定義所有實體（User, HeatPumpDevice, Component, SafetyThreshold, Notification, TelemetryData, ControlCommand）與 11 個列舉型別，參考 data-model.md 第 1-762 行
-- [ ] T011 建立初始資料庫遷移：執行 `npx prisma migrate dev --name init`，產生 backend/prisma/migrations/ 資料夾
-- [ ] T012 產生 Prisma Client：執行 `npx prisma generate`，產生型別安全的資料庫查詢 API
-- [ ] T013 建立資料庫種子腳本：建立 backend/prisma/seed.ts，插入預設使用者帳號（admin/admin123）、3 台測試設備、安全閾值配置
-- [ ] T014 [P] 建立資料庫連線模組：建立 backend/src/database/connection.ts，封裝 Prisma Client 初始化與錯誤處理
-- [ ] T015 [P] 實作資料清理排程服務：建立 backend/src/services/cleanup.ts，使用 node-cron 每日凌晨刪除超過 30 天的遙測資料與操作記錄、超過 7 天的通知
+- [X] T010 建立 Prisma Schema：在 backend/prisma/schema.prisma 定義所有實體（User, HeatPumpDevice, Component, SafetyThreshold, Notification, TelemetryData, ControlCommand）與 11 個列舉型別，參考 data-model.md 第 1-762 行
+- [X] T011 建立初始資料庫遷移：執行 `npx prisma migrate dev --name init`，產生 backend/prisma/migrations/ 資料夾
+- [X] T012 產生 Prisma Client：執行 `npx prisma generate`，產生型別安全的資料庫查詢 API
+- [X] T013 建立資料庫種子腳本：建立 backend/prisma/seed.ts，插入預設使用者帳號（admin/admin123）、3 台測試設備、安全閾值配置
+- [X] T014 [P] 建立資料庫連線模組：建立 backend/src/database/connection.ts，封裝 Prisma Client 初始化與錯誤處理
+- [X] T015 [P] 實作資料清理排程服務：建立 backend/src/services/cleanup.ts，使用 node-cron 每日凌晨刪除超過 30 天的遙測資料與操作記錄、超過 7 天的通知
 
 ### 認證與 Session 管理
 
-- [ ] T016 [P] 建立 User 模型層：建立 backend/src/models/user.ts，定義 User 實體介面與型別（對應 Prisma Schema）
-- [ ] T017 實作密碼雜湊工具：建立 backend/src/utils/crypto.ts，使用 bcrypt v5.1+ 實作密碼雜湊與驗證函式（hashPassword, verifyPassword）
-- [ ] T018 實作認證服務層：建立 backend/src/services/auth.ts，包含登入邏輯（密碼驗證、失敗計數、帳號鎖定、Session Token 生成）
-- [ ] T019 建立認證中介軟體：建立 backend/src/api/middlewares/auth.ts，實作 Session Token 驗證中介軟體（從 Cookie 讀取 sessionToken，查詢資料庫驗證有效性與過期時間）
-- [ ] T020 實作認證 API 路由：建立 backend/src/api/routes/auth.ts，實作 POST /api/auth/login、POST /api/auth/logout、GET /api/auth/me 端點，參考 contracts/auth-api.yaml
+- [X] T016 [P] 建立 User 模型層：建立 backend/src/models/user.ts，定義 User 實體介面與型別（對應 Prisma Schema）
+- [X] T017 實作密碼雜湊工具：建立 backend/src/utils/crypto.ts，使用 bcrypt v5.1+ 實作密碼雜湊與驗證函式（hashPassword, verifyPassword）
+- [X] T018 實作認證服務層：建立 backend/src/services/auth.ts，包含登入邏輯（密碼驗證、失敗計數、帳號鎖定、Session Token 生成）
+- [X] T019 建立認證中介軟體：建立 backend/src/api/middlewares/auth.ts，實作 Session Token 驗證中介軟體（從 Cookie 讀取 sessionToken，查詢資料庫驗證有效性與過期時間）
+- [X] T020 實作認證 API 路由：建立 backend/src/api/routes/auth.ts，實作 POST /api/auth/login、POST /api/auth/logout、GET /api/auth/session 端點，參考 contracts/auth-api.yaml
 
 ### MQTT 通訊基礎設施
 
-- [ ] T021 建立 MQTT 配置模組：建立 backend/src/config/mqtt.ts，定義 Broker URL、QoS 策略、Topic 命名規範
-- [ ] T022 實作 MQTT 服務層：建立 backend/src/services/mqtt.ts，封裝 mqtt.js 連線管理、訂閱/發布邏輯、自動重連機制、LWT 設定，參考 research.md 第 296-346 行
-- [ ] T023 實作 MQTT 訂閱處理器：在 backend/src/services/mqtt.ts 中訂閱 `devices/+/telemetry`、`devices/+/command-ack`、`devices/+/status` Topics，接收設備資料並更新資料庫
-- [ ] T024 實作遙測資料處理服務：建立 backend/src/services/telemetry.ts，處理 MQTT 接收到的遙測資料（儲存至 TelemetryData 表、更新 HeatPumpDevice 快取資料、計算 COP）
+- [X] T021 建立 MQTT 配置模組：建立 backend/src/config/mqtt.ts，定義 Broker URL、QoS 策略、Topic 命名規範
+- [X] T022 實作 MQTT 服務層：建立 backend/src/services/mqtt.ts，封裝 mqtt.js 連線管理、訂閱/發布邏輯、自動重連機制、LWT 設定，參考 research.md 第 296-346 行
+- [X] T023 實作 MQTT 訂閱處理器：在 backend/src/services/mqtt.ts 中訂閱 `devices/+/telemetry`、`devices/+/command-ack`、`devices/+/status` Topics，接收設備資料並更新資料庫
+- [X] T024 實作遙測資料處理服務：建立 backend/src/services/telemetry.ts，處理 MQTT 接收到的遙測資料（儲存至 TelemetryData 表、更新 HeatPumpDevice 快取資料、計算 COP）
 
 ### WebSocket 即時通訊基礎設施
 
-- [ ] T025 建立 WebSocket 伺服器：建立 backend/src/api/websocket.ts，使用 socket.io v4.6+ 建立 `/realtime` 命名空間，實作 Session Token 認證中介軟體，參考 contracts/realtime-api.md
-- [ ] T026 實作 WebSocket 事件處理器：在 backend/src/api/websocket.ts 實作客戶端事件處理（subscribe:device、unsubscribe:device、subscribe:notifications）
-- [ ] T027 整合 MQTT 與 WebSocket：修改 backend/src/services/mqtt.ts，當接收到新的遙測資料時，透過 socket.io 推送至訂閱該設備的所有客戶端（emit `device:telemetry:update` 事件）
+- [X] T025 建立 WebSocket 伺服器：建立 backend/src/api/websocket.ts，使用 socket.io v4.6+ 建立 `/realtime` 命名空間，實作 Session Token 認證中介軟體，參考 contracts/realtime-api.md
+- [X] T026 實作 WebSocket 事件處理器：在 backend/src/api/websocket.ts 實作客戶端事件處理（subscribe:device、unsubscribe:device、subscribe:notifications）
+- [X] T027 整合 MQTT 與 WebSocket：修改 backend/src/services/mqtt.ts，當接收到新的遙測資料時，透過 socket.io 推送至訂閱該設備的所有客戶端（emit `device:telemetry:update` 事件）
 
 ### HTTP API 框架
 
-- [ ] T028 [P] 建立 Fastify 應用主程式：建立 backend/src/main.ts，初始化 Fastify 伺服器、註冊中介軟體（CORS, Session, Logger）、設定 HTTPS（若啟用）
-- [ ] T029 [P] 建立錯誤處理中介軟體：建立 backend/src/api/middlewares/error-handler.ts，統一處理未捕獲錯誤、資料庫錯誤、驗證錯誤，回傳標準化 JSON 錯誤回應
-- [ ] T030 [P] 建立速率限制中介軟體：建立 backend/src/api/middlewares/rate-limiter.ts，實作控制指令速率限制邏輯（每台設備 10 秒冷卻期）
-- [ ] T031 建立 API 路由主入口：建立 backend/src/api/routes/index.ts，註冊所有 API 路由（/api/auth、/api/devices、/api/notifications、/api/telemetry、/api/commands）
-- [ ] T032 整合所有服務並啟動伺服器：修改 backend/src/main.ts，依序初始化資料庫連線、MQTT 服務、WebSocket 伺服器、HTTP 伺服器，監聽 PORT 3000
+- [X] T028 [P] 建立 Fastify 應用主程式：建立 backend/src/main.ts，初始化 Fastify 伺服器、註冊中介軟體（CORS, Session, Logger）、設定 HTTPS（若啟用）
+- [X] T029 [P] 建立錯誤處理中介軟體：建立 backend/src/api/middlewares/error-handler.ts，統一處理未捕獲錯誤、資料庫錯誤、驗證錯誤，回傳標準化 JSON 錯誤回應
+- [X] T030 [P] 建立速率限制中介軟體：建立 backend/src/api/middlewares/rate-limiter.ts，實作控制指令速率限制邏輯（每台設備 10 秒冷卻期）
+- [X] T031 建立 API 路由主入口：建立 backend/src/api/routes/index.ts，註冊所有 API 路由（/api/auth、/api/devices、/api/notifications、/api/telemetry、/api/commands）
+- [X] T032 整合所有服務並啟動伺服器：修改 backend/src/main.ts，依序初始化資料庫連線、MQTT 服務、WebSocket 伺服器、HTTP 伺服器，監聽 PORT 3000
 
 ### 前端全域基礎設施
 
-- [ ] T033 [P] 建立前端應用入口：建立 frontend/src/main.tsx，初始化 React 應用、掛載至 DOM、套用全域樣式
-- [ ] T034 [P] 建立路由配置：建立 frontend/src/routes.tsx，使用 React Router v6+ 定義路由（/, /login, /dashboard, /devices/:id）
-- [ ] T035 [P] 建立 Axios HTTP 客戶端：建立 frontend/src/services/api/client.ts，配置 baseURL、timeout、請求攔截器（自動附帶 Cookie）與回應攔截器（統一錯誤提示、自動偵測 401 錯誤時清除本地 Session 並導向登入頁）
-- [ ] T036 [P] 建立全域狀態 Store：建立 frontend/src/store/authStore.ts（使用 Zustand，管理使用者登入狀態）、frontend/src/store/uiStore.ts（管理側邊欄展開、Loading 狀態）
-- [ ] T037 [P] 建立 TypeScript 型別定義：建立 frontend/src/types/models.ts、frontend/src/types/api.ts、frontend/src/types/enums.ts（與後端 API 回應格式一致）
-- [ ] T038 [P] 建立全域樣式與 CSS 變數：建立 frontend/src/styles/global.css、frontend/src/styles/variables.css（定義色彩、間距、斷點）
-- [ ] T039 [P] 建立通用 UI 元件：建立 frontend/src/components/atoms/Button、Input、Badge、Spinner 等基礎元件
-- [ ] T040 建立 App 根元件：建立 frontend/src/App.tsx，整合路由、全域 ErrorBoundary、Zustand Provider
+- [X] T033 [P] 建立前端應用入口：建立 frontend/src/main.tsx，初始化 React 應用、掛載至 DOM、套用全域樣式
+- [X] T034 [P] 建立路由配置：建立 frontend/src/routes.tsx，使用 React Router v6+ 定義路由（/, /login, /dashboard, /devices/:id）
+- [X] T035 [P] 建立 Axios HTTP 客戶端：建立 frontend/src/services/api/client.ts，配置 baseURL、timeout、請求攔截器（自動附帶 Cookie）與回應攔截器（統一錯誤提示、自動偵測 401 錯誤時清除本地 Session 並導向登入頁）
+- [X] T036 [P] 建立全域狀態 Store：建立 frontend/src/store/authStore.ts（使用 Zustand，管理使用者登入狀態）、frontend/src/store/uiStore.ts（管理側邊欄展開、Loading 狀態）
+- [X] T037 [P] 建立 TypeScript 型別定義：建立 frontend/src/types/models.ts、frontend/src/types/api.ts、frontend/src/types/enums.ts（與後端 API 回應格式一致）
+- [X] T038 [P] 建立全域樣式與 CSS 變數：建立 frontend/src/styles/global.css、frontend/src/styles/variables.css（定義色彩、間距、斷點）
+- [X] T039 [P] 建立通用 UI 元件：建立 frontend/src/components/atoms/Button、Input、Badge、Spinner 等基礎元件
+- [X] T040 建立 App 根元件：建立 frontend/src/App.tsx，整合路由、全域 ErrorBoundary、Zustand Provider
 
 **檢查點**：基礎設施完整，可開始使用者故事實作
 
@@ -107,34 +107,34 @@
 
 ### 後端 API 實作（User Story 1）
 
-- [ ] T041 [P] [US1] 建立 HeatPumpDevice 模型層：建立 backend/src/models/device.ts，定義設備實體介面與燈號顏色計算邏輯（NORMAL→綠、ABNORMAL→紅、OFFLINE→灰）
-- [ ] T042 [P] [US1] 建立 Notification 模型層：建立 backend/src/models/notification.ts，定義通知實體介面
-- [ ] T043 [P] [US1] 建立 SafetyThreshold 模型層：建立 backend/src/models/threshold.ts，定義閾值配置介面
-- [ ] T044 [US1] 實作閾值檢測服務：建立 backend/src/services/threshold.ts，實作參數超過閾值檢測邏輯（比對 SafetyThreshold 表，判斷是否異常）
-- [ ] T045 [US1] 實作通知生成服務：建立 backend/src/services/notification.ts，包含產生異常通知、設備離線通知、標記已讀等邏輯
-- [ ] T046 [US1] 實作設備管理服務：建立 backend/src/services/device.ts，包含查詢所有設備、計算總覽統計資訊（在線數、總耗電、總產熱、平均COP）、設備離線偵測邏輯（含防抖機制：持續 30 秒無資料才標記 OFFLINE；連續 2 次資料才標記 ONLINE）。多人控制策略：不檢查設備控制權歸屬，所有指令直接發送至 MQTT，採用 Last-Write-Wins（最後指令優先）策略
-- [ ] T047 [US1] 實作設備 API 路由：建立 backend/src/api/routes/devices.ts，實作 GET /api/devices（回傳設備清單與總覽資訊），參考 contracts/device-api.yaml 第 1-100 行
-- [ ] T048 [US1] 實作通知 API 路由：建立 backend/src/api/routes/notifications.ts，實作 GET /api/notifications（查詢通知清單）、PATCH /api/notifications/:id/read（標記已讀）、GET /api/notifications/unread-count（未讀數量），參考 contracts/notification-api.yaml
-- [ ] T049 [US1] 整合異常檢測至 MQTT 處理器：修改 backend/src/services/mqtt.ts，當接收到遙測資料時，呼叫閾值檢測服務，若異常則更新設備狀態並產生通知
-- [ ] T050 [US1] 整合設備離線偵測至定時任務：修改 backend/src/services/cleanup.ts，每分鐘檢查所有設備的 lastDataReceivedAt，實作防抖邏輯避免頻繁切換：持續超過 30 秒無資料才標記為 OFFLINE（並產生通知）；設備恢復後需連續接收 2 次資料（約 1 分鐘）才標記為 ONLINE，避免網路抖動造成燈號閃爍
+- [X] T041 [P] [US1] 建立 HeatPumpDevice 模型層：建立 backend/src/models/device.ts，定義設備實體介面與燈號顏色計算邏輯（NORMAL→綠、ABNORMAL→紅、OFFLINE→灰）
+- [X] T042 [P] [US1] 建立 Notification 模型層：建立 backend/src/models/notification.ts，定義通知實體介面
+- [X] T043 [P] [US1] 建立 SafetyThreshold 模型層：建立 backend/src/models/threshold.ts，定義閾值配置介面
+- [X] T044 [US1] 實作閾值檢測服務：建立 backend/src/services/threshold.ts，實作參數超過閾值檢測邏輯（比對 SafetyThreshold 表，判斷是否異常）
+- [X] T045 [US1] 實作通知生成服務：建立 backend/src/services/notification.ts，包含產生異常通知、設備離線通知、標記已讀等邏輯
+- [X] T046 [US1] 實作設備管理服務：建立 backend/src/services/device.ts，包含查詢所有設備、計算總覽統計資訊（在線數、總耗電、總產熱、平均COP）、設備離線偵測邏輯（含防抖機制：持續 30 秒無資料才標記 OFFLINE；連續 2 次資料才標記 ONLINE）。多人控制策略：不檢查設備控制權歸屬，所有指令直接發送至 MQTT，採用 Last-Write-Wins（最後指令優先）策略
+- [X] T047 [US1] 實作設備 API 路由：建立 backend/src/api/routes/devices.ts，實作 GET /api/devices（回傳設備清單與總覽資訊），參考 contracts/device-api.yaml 第 1-100 行
+- [X] T048 [US1] 實作通知 API 路由：建立 backend/src/api/routes/notifications.ts，實作 GET /api/notifications（查詢通知清單）、PATCH /api/notifications/:id/read（標記已讀）、GET /api/notifications/unread-count（未讀數量），參考 contracts/notification-api.yaml
+- [X] T049 [US1] 整合異常檢測至 MQTT 處理器：修改 backend/src/services/mqtt.ts，當接收到遙測資料時，呼叫閾值檢測服務，若異常則更新設備狀態並產生通知
+- [X] T050 [US1] 整合設備離線偵測至定時任務：修改 backend/src/services/cleanup.ts，每分鐘檢查所有設備的 lastDataReceivedAt，實作防抖邏輯避免頻繁切換：持續超過 30 秒無資料才標記為 OFFLINE（並產生通知）；設備恢復後需連續接收 2 次資料（約 1 分鐘）才標記為 ONLINE，避免網路抖動造成燈號閃爍
 
 ### 前端 UI 實作（User Story 1）
 
-- [ ] T051 [P] [US1] 建立認證 API 服務：建立 frontend/src/services/api/auth.ts，實作 login()、logout()、getCurrentUser() 函式
-- [ ] T052 [P] [US1] 建立設備 API 服務：建立 frontend/src/services/api/devices.ts，實作 getDevices() 函式（呼叫 GET /api/devices）
-- [ ] T053 [P] [US1] 建立通知 API 服務：建立 frontend/src/services/api/notifications.ts，實作 getNotifications()、markAsRead()、getUnreadCount() 函式
-- [ ] T054 [P] [US1] 建立登入頁面：建立 frontend/src/pages/LoginPage/LoginPage.tsx，包含帳號密碼輸入欄位、登入按鈕、錯誤訊息顯示（連續失敗 3 次顯示鎖定提示）
-- [ ] T055 [P] [US1] 建立狀態指示器元件：建立 frontend/src/components/molecules/StatusIndicator（顯示綠/紅/灰燈號與文字說明）
-- [ ] T056 [P] [US1] 建立設備卡片元件：建立 frontend/src/components/molecules/DeviceCard（展示元件，接收設備資料 props，顯示設備名稱、燈號、即時參數）
-- [ ] T057 [P] [US1] 建立通知項目元件：建立 frontend/src/components/molecules/NotificationItem（顯示事件類型、時間、描述、已讀標記）
-- [ ] T058 [US1] 建立設備清單元件：建立 frontend/src/components/organisms/DeviceList（有機體元件，渲染多個 DeviceCard，處理點擊導航至詳細頁面）
-- [ ] T059 [US1] 建立通知中心元件：建立 frontend/src/components/organisms/NotificationCenter（下拉面板，初始載入最近 50 則通知，支援「載入更多」按鈕增量載入舊通知。未讀數量顯示邏輯：≤99 則顯示實際數字，>99 則顯示「99+」。支援標記已讀功能，點擊通知項目時自動標記為已讀）
-- [ ] T060 [US1] 建立全域總覽統計元件：建立 frontend/src/components/organisms/GlobalSummary（顯示在線設備數、總耗電量、總產熱量、整體COP 四個數字卡片）
-- [ ] T061 [US1] 建立儀表板佈局模板：建立 frontend/src/components/templates/DashboardLayout（包含頂部總覽區、左側設備清單、中央內容區、右上角通知圖示）
-- [ ] T062 [US1] 建立儀表板頁面容器：建立 frontend/src/pages/DashboardPage/DashboardPage.tsx（容器元件，使用 React Query 獲取設備清單與總覽資料，整合 DashboardLayout、GlobalSummary、DeviceList、NotificationCenter）
-- [ ] T063 [US1] 實作 WebSocket 即時更新與輪詢降級機制：建立 frontend/src/services/websocket/client.ts，連接至 `/realtime` 命名空間，監聽 `device:telemetry:update` 事件，自動更新儀表板資料（使用 React Query 的 queryClient.invalidateQueries）。實作 30 秒輪詢降級方案：當 WebSocket 連線失敗或斷線時，自動切換為每 30 秒輪詢 GET /api/devices 端點，確保資料更新不中斷（符合 FR-006 需求）
-- [ ] T064 [US1] 實作受保護路由與 Session 管理：修改 frontend/src/routes.tsx，加入認證檢查，未登入時重新導向至 /login。實作 Session 過期邏輯：記錄最後操作時間，8 小時無任何 API 請求或使用者互動時，前端主動呼叫 logout API 並導向登入頁，顯示「登入已過期，請重新登入」訊息
-- [ ] T065 [US1] 實作 Loading 與錯誤狀態：在 DashboardPage 加入 Skeleton Screens（載入時）、錯誤提示（網路異常時）、Empty State（無設備時）
+- [X] T051 [P] [US1] 建立認證 API 服務：建立 frontend/src/services/api/auth.ts，實作 login()、logout()、getCurrentUser() 函式
+- [X] T052 [P] [US1] 建立設備 API 服務：建立 frontend/src/services/api/devices.ts，實作 getDevices() 函式（呼叫 GET /api/devices）
+- [X] T053 [P] [US1] 建立通知 API 服務：建立 frontend/src/services/api/notifications.ts，實作 getNotifications()、markAsRead()、getUnreadCount() 函式
+- [X] T054 [P] [US1] 建立登入頁面：建立 frontend/src/pages/LoginPage/LoginPage.tsx，包含帳號密碼輸入欄位、登入按鈕、錯誤訊息顯示（連續失敗 3 次顯示鎖定提示）
+- [X] T055 [P] [US1] 建立狀態指示器元件：建立 frontend/src/components/molecules/StatusIndicator（顯示綠/紅/灰燈號與文字說明）
+- [X] T056 [P] [US1] 建立設備卡片元件：建立 frontend/src/components/molecules/DeviceCard（展示元件，接收設備資料 props，顯示設備名稱、燈號、即時參數）
+- [X] T057 [P] [US1] 建立通知項目元件：建立 frontend/src/components/molecules/NotificationItem（顯示事件類型、時間、描述、已讀標記）
+- [X] T058 [US1] 建立設備清單元件：建立 frontend/src/components/organisms/DeviceList（有機體元件，渲染多個 DeviceCard，處理點擊導航至詳細頁面）
+- [X] T059 [US1] 建立通知中心元件：建立 frontend/src/components/organisms/NotificationCenter（下拉面板，初始載入最近 50 則通知，支援「載入更多」按鈕增量載入舊通知。未讀數量顯示邏輯：≤99 則顯示實際數字，>99 則顯示「99+」。支援標記已讀功能，點擊通知項目時自動標記為已讀）
+- [X] T060 [US1] 建立全域總覽統計元件：建立 frontend/src/components/organisms/GlobalSummary（顯示在線設備數、總耗電量、總產熱量、整體COP 四個數字卡片）
+- [X] T061 [US1] 建立儀表板佈局模板：建立 frontend/src/components/templates/DashboardLayout（包含頂部總覽區、左側設備清單、中央內容區、右上角通知圖示）
+- [X] T062 [US1] 建立儀表板頁面容器：建立 frontend/src/pages/DashboardPage/DashboardPage.tsx（容器元件，使用 React Query 獲取設備清單與總覽資料，整合 DashboardLayout、GlobalSummary、DeviceList、NotificationCenter）
+- [X] T063 [US1] 實作 WebSocket 即時更新與輪詢降級機制：建立 frontend/src/services/websocket/client.ts，連接至 `/realtime` 命名空間，監聽 `device:telemetry:update` 事件，自動更新儀表板資料（使用 React Query 的 queryClient.invalidateQueries）。實作 30 秒輪詢降級方案：當 WebSocket 連線失敗或斷線時，自動切換為每 30 秒輪詢 GET /api/devices 端點，確保資料更新不中斷（符合 FR-006 需求）
+- [X] T064 [US1] 實作受保護路由與 Session 管理：修改 frontend/src/routes.tsx，加入認證檢查，未登入時重新導向至 /login。實作 Session 過期邏輯：記錄最後操作時間，8 小時無任何 API 請求或使用者互動時，前端主動呼叫 logout API 並導向登入頁，顯示「登入已過期，請重新登入」訊息
+- [X] T065 [US1] 實作 Loading 與錯誤狀態：在 DashboardPage 加入 Skeleton Screens（載入時）、錯誤提示（網路異常時）、Empty State（無設備時）
 
 **檢查點**：此時 User Story 1 應完全可用且可獨立測試（登入 → 查看儀表板 → 看到設備狀態與通知）
 

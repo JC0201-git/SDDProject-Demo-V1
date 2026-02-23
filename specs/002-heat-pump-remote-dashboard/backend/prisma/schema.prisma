@@ -1,0 +1,370 @@
+// ============================================================================
+// 資料模型：熱泵遠端監控儀表板
+// ============================================================================
+// 專案：Demo-v1
+// 功能分支：002-heat-pump-remote-dashboard
+// 資料庫：PostgreSQL
+// ORM：Prisma v5.8+
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// 列舉型別定義
+// ============================================================================
+
+/// 設備運作狀態
+enum DeviceStatus {
+  NORMAL    // 正常運作
+  ABNORMAL  // 異常（參數超過閾值）
+  OFFLINE   // 離線
+}
+
+/// 設備運作模式
+enum OperationMode {
+  AUTO    // 自動模式
+  MANUAL  // 手動模式
+}
+
+/// 零件運作狀態
+enum ComponentStatus {
+  RUNNING  // 運轉中
+  STOPPED  // 停止
+  ABNORMAL // 異常
+}
+
+/// 零件類型
+enum ComponentType {
+  COMPRESSOR        // 壓縮機
+  FAN               // 風扇
+  CIRCULATION_PUMP  // 循環幫浦
+  EXPANSION_VALVE   // 膨脹閥
+  WATER_TANK        // 水箱
+  OTHER             // 其他
+}
+
+/// 通知事件類型
+enum NotificationEventType {
+  DEVICE_OFFLINE          // 設備離線
+  TEMPERATURE_ABNORMAL    // 溫度異常
+  PRESSURE_ABNORMAL       // 壓力異常
+  COMPONENT_FAILURE       // 零件故障
+  OTHER_ABNORMAL          // 其他異常
+}
+
+/// 通知嚴重程度
+enum NotificationSeverity {
+  INFO     // 資訊
+  WARNING  // 警告
+  ERROR    // 錯誤
+}
+
+/// 遙測資料參數類型
+enum TelemetryParameterType {
+  EXHAUST_TEMPERATURE    // 排氣溫度
+  SUCTION_TEMPERATURE    // 吸氣溫度
+  WATER_IN_TEMPERATURE   // 入水溫度
+  WATER_OUT_TEMPERATURE  // 出水溫度
+  WATER_TANK_TEMPERATURE // 水箱溫度
+  HIGH_PRESSURE          // 高壓壓力
+  LOW_PRESSURE           // 低壓壓力
+  COMPRESSOR_FREQUENCY   // 壓縮機頻率
+  POWER_CONSUMPTION      // 瞬時耗電量
+  HEAT_OUTPUT            // 瞬時產熱量
+  COP                    // COP 值（效能係數）
+}
+
+/// 資料品質標記
+enum DataQuality {
+  NORMAL    // 正常
+  ABNORMAL  // 異常（明顯錯誤的數值）
+}
+
+/// 控制指令類型
+enum ControlCommandType {
+  SET_MODE         // 切換運作模式
+  SET_TARGET_TEMP  // 設定目標水溫
+  ADJUST_PARAMETER // 調整其他參數
+}
+
+/// 控制指令確認狀態
+enum ControlCommandStatus {
+  PENDING      // 傳送中
+  ACKNOWLEDGED // 已確認
+  TIMEOUT      // 逾時
+  FAILED       // 失敗
+}
+
+/// 安全閾值參數名稱
+enum ThresholdParameter {
+  EXHAUST_TEMPERATURE    // 排氣溫度
+  HIGH_PRESSURE          // 高壓壓力
+  LOW_PRESSURE           // 低壓壓力
+  WATER_TANK_TEMPERATURE // 水箱溫度
+  COMPRESSOR_FREQUENCY   // 壓縮機頻率
+}
+
+/// 異常嚴重程度（用於閾值設定）
+enum ThresholdSeverity {
+  WARNING  // 警告
+  ERROR    // 錯誤
+}
+
+// ============================================================================
+// 使用者管理
+// ============================================================================
+
+/// 使用者帳號
+/// 代表系統的管理人員，負責監控與控制熱泵設備
+model User {
+  id                   Int       @id @default(autoincrement())
+  username             String    @unique @db.VarChar(50)          // 使用者帳號（唯一）
+  passwordHash         String    @db.VarChar(255)                 // 密碼雜湊值（bcrypt/Argon2）
+  displayName          String    @db.VarChar(100)                 // 顯示名稱（如「張經理」）
+  loginFailedCount     Int       @default(0)                      // 登入失敗次數
+  accountLockedUntil   DateTime? // 帳號鎖定截止時間（NULL 表示未鎖定）
+  lastLoginAt          DateTime? // 上次成功登入時間
+  sessionToken         String?   @unique @db.VarChar(255)         // 當前 Session Token（NULL 表示未登入）
+  sessionExpiresAt     DateTime? // Session 過期時間
+  createdAt            DateTime  @default(now())                  // 帳號建立時間
+  updatedAt            DateTime  @updatedAt                       // 最後更新時間
+
+  // 關聯：使用者執行的控制指令
+  controlCommands      ControlCommand[]
+
+  @@map("users")
+}
+
+// ============================================================================
+// 設備管理
+// ============================================================================
+
+/// 熱泵設備
+/// 代表一台實體熱泵設備，包含即時狀態與運作參數
+model HeatPumpDevice {
+  id                        Int            @id @default(autoincrement())
+  deviceCode                String         @unique @db.VarChar(50)      // 設備編號（唯一識別碼）
+  deviceName                String         @db.VarChar(100)             // 設備名稱（如「A站」、「B站」）
+  status                    DeviceStatus   @default(OFFLINE)            // 運作狀態
+  operationMode             OperationMode  @default(AUTO)               // 運作模式
+  
+  // 即時參數（最新一筆資料，用於快速讀取）
+  compressorFrequency       Float?         // 壓縮機頻率（Hz）
+  exhaustTemperature        Float?         // 排氣溫度（°C）
+  suctionTemperature        Float?         // 吸氣溫度（°C）
+  highPressure              Float?         // 高壓壓力（MPa）
+  lowPressure               Float?         // 低壓壓力（MPa）
+  waterTankTemperature      Float?         // 水箱溫度（°C）
+  waterInTemperature        Float?         // 入水溫度（°C）
+  waterOutTemperature       Float?         // 出水溫度（°C）
+  targetWaterTemperature    Float?         // 目標水溫（°C，僅手動模式）
+  
+  // 效能指標
+  instantPowerConsumption   Float?         // 瞬時耗電量（kW）
+  instantHeatOutput         Float?         // 瞬時產熱量（kW）
+  currentCOP                Float?         // 當前 COP 值
+  
+  lastDataReceivedAt        DateTime?      // 最後接收資料時間（用於判斷離線）
+  lastControlledAt          DateTime?      // 最後控制時間（用於速率限制）
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  // 關聯：設備的零件
+  components                Component[]
+
+  // 關聯：設備的遙測資料
+  telemetryData             TelemetryData[]
+
+  // 關聯：設備的通知訊息
+  notifications             Notification[]
+
+  // 關聯：設備的控制指令
+  controlCommands           ControlCommand[]
+
+  @@index([status])                        // 索引：依狀態查詢（全域儀表板）
+  @@index([lastDataReceivedAt])            // 索引：依最後接收時間查詢（離線偵測）
+  @@map("heat_pump_devices")
+}
+
+/// 設備零件
+/// 代表熱泵設備內的子元件，如壓縮機、風扇、幫浦等
+model Component {
+  id                Int              @id @default(autoincrement())
+  componentCode     String           @unique @db.VarChar(50)     // 零件編號（唯一識別碼）
+  componentName     String           @db.VarChar(100)            // 零件名稱（如「1號風扇」）
+  componentType     ComponentType                                // 零件類型
+  status            ComponentStatus  @default(STOPPED)           // 運作狀態
+  deviceId          Int                                          // 所屬設備 ID
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // 關聯：所屬設備
+  device            HeatPumpDevice   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])                                            // 索引：依設備查詢零件清單
+  @@index([status])                                              // 索引：依狀態查詢異常零件
+  @@map("components")
+}
+
+// ============================================================================
+// 安全閾值配置
+// ============================================================================
+
+/// 安全閾值設定
+/// 定義各監測參數的安全範圍，用於異常偵測
+model SafetyThreshold {
+  id                Int                @id @default(autoincrement())
+  parameter         ThresholdParameter @unique                   // 參數名稱（唯一）
+  upperLimit        Float?             // 上限值（超過視為異常，NULL 表示無上限）
+  lowerLimit        Float?             // 下限值（低於視為異常，NULL 表示無下限）
+  unit              String             @db.VarChar(20)           // 單位（如「°C」、「MPa」）
+  severity          ThresholdSeverity  @default(WARNING)         // 異常嚴重程度
+  description       String?            @db.Text                  // 說明文字
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@map("safety_thresholds")
+}
+
+// ============================================================================
+// 通知訊息
+// ============================================================================
+
+/// 通知訊息
+/// 系統產生的異常事件通知，顯示於通知中心
+model Notification {
+  id                Int                      @id @default(autoincrement())
+  eventType         NotificationEventType                         // 事件類型
+  severity          NotificationSeverity     @default(WARNING)    // 嚴重程度
+  deviceId          Int                                           // 相關設備 ID
+  title             String                   @db.VarChar(200)     // 通知標題
+  description       String                   @db.Text             // 詳細描述
+  occurredAt        DateTime                 @default(now())      // 發生時間
+  isRead            Boolean                  @default(false)      // 已讀狀態
+  readAt            DateTime?                // 已讀時間
+  createdAt         DateTime                 @default(now())
+
+  // 關聯：相關設備
+  device            HeatPumpDevice           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, occurredAt(sort: Desc)])                     // 索引：依設備與時間查詢
+  @@index([isRead, occurredAt(sort: Desc)])                       // 索引：查詢未讀通知
+  @@index([occurredAt(sort: Desc)])                               // 索引：依時間排序（通知中心）
+  @@index([createdAt])                                            // 索引：用於資料清理（刪除超過7天的通知）
+  @@map("notifications")
+}
+
+// ============================================================================
+// 遙測資料（時間序列資料）
+// ============================================================================
+
+/// 遙測資料點
+/// 記錄設備在特定時間點的監測數值，用於趨勢分析
+/// 
+/// ⚠️ 資料分區策略建議（PostgreSQL）：
+/// - 使用時間分區（Time-based Partitioning），依月份分割資料表
+/// - 範例：telemetry_data_2026_02, telemetry_data_2026_03, ...
+/// - 執行指令：CREATE TABLE telemetry_data_2026_02 PARTITION OF telemetry_data 
+///            FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+/// - 自動化：使用 pg_cron 或應用層排程，每月自動建立下月分區
+/// 
+/// ⚠️ 資料保留策略：
+/// - 保留期限：30 天
+/// - 清理機制：每日凌晨執行批次刪除作業，刪除 createdAt < NOW() - INTERVAL '30 days' 的記錄
+/// - 建議使用分區刪除（DROP PARTITION）而非逐筆刪除，效能更好
+model TelemetryData {
+  id                Int                      @id @default(autoincrement())
+  deviceId          Int                                           // 設備 ID
+  parameter         TelemetryParameterType                        // 參數類型
+  value             Float                                         // 數值
+  dataQuality       DataQuality              @default(NORMAL)     // 資料品質標記
+  timestamp         DateTime                 @default(now())      // 資料時間戳記
+  createdAt         DateTime                 @default(now())      // 建立時間（用於資料清理）
+
+  // 關聯：所屬設備
+  device            HeatPumpDevice           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, parameter, timestamp(sort: Desc)])           // 索引：查詢特定設備的特定參數趨勢
+  @@index([deviceId, timestamp(sort: Desc)])                      // 索引：查詢特定設備的所有參數
+  @@index([timestamp])                                            // 索引：用於分區管理與資料清理
+  @@index([createdAt])                                            // 索引：用於資料清理作業
+  @@map("telemetry_data")
+}
+
+// ============================================================================
+// 控制指令
+// ============================================================================
+
+/// 控制指令
+/// 記錄遠端控制操作，包含操作者、指令內容與執行狀態
+/// 
+/// ⚠️ 資料保留策略：
+/// - 保留期限：30 天（與遙測資料一致）
+/// - 清理機制：與遙測資料清理作業一併執行
+model ControlCommand {
+  id                String               @id @default(uuid())     // 指令編號（UUID）
+  deviceId          Int                                           // 目標設備 ID
+  userId            Int                                           // 操作者 ID
+  commandType       ControlCommandType                            // 指令類型
+  commandContent    Json                                          // 指令內容（JSON 格式）
+  status            ControlCommandStatus @default(PENDING)        // 確認狀態
+  sentAt            DateTime             @default(now())          // 送出時間
+  acknowledgedAt    DateTime?            // 確認時間
+  errorMessage      String?              @db.Text                 // 錯誤訊息（失敗時）
+  createdAt         DateTime             @default(now())          // 建立時間（用於資料清理）
+
+  // 關聯：目標設備
+  device            HeatPumpDevice       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  // 關聯：操作者
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, sentAt(sort: Desc)])                         // 索引：查詢特定設備的操作記錄
+  @@index([userId, sentAt(sort: Desc)])                           // 索引：查詢特定使用者的操作記錄
+  @@index([status, sentAt])                                       // 索引：查詢待確認的指令（用於超時檢測）
+  @@index([createdAt])                                            // 索引：用於資料清理作業
+  @@map("control_commands")
+}
+
+// ============================================================================
+// 資料庫維護說明
+// ============================================================================
+
+// 1. 初始化資料庫：
+//    npx prisma migrate dev --name init
+//
+// 2. 產生 Prisma Client：
+//    npx prisma generate
+//
+// 3. 時間序列資料分區設定（PostgreSQL）：
+//    -- 將 telemetry_data 轉換為分區表
+//    ALTER TABLE telemetry_data PARTITION BY RANGE (timestamp);
+//    
+//    -- 建立當月與次月分區
+//    CREATE TABLE telemetry_data_2026_02 PARTITION OF telemetry_data 
+//      FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+//    CREATE TABLE telemetry_data_2026_03 PARTITION OF telemetry_data 
+//      FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+//
+// 4. 資料清理排程（每日凌晨 3:00 執行）：
+//    -- 方案 A：使用 pg_cron 擴充功能
+//    SELECT cron.schedule('cleanup-old-data', '0 3 * * *', $$
+//      DELETE FROM telemetry_data WHERE created_at < NOW() - INTERVAL '30 days';
+//      DELETE FROM control_commands WHERE created_at < NOW() - INTERVAL '30 days';
+//      DELETE FROM notifications WHERE created_at < NOW() - INTERVAL '7 days';
+//    $$);
+//    
+//    -- 方案 B：應用層實作（Node.js + node-cron）
+//    // 在後端服務中使用 node-cron 排程執行清理邏輯
+//
+// 5. 效能最佳化建議：
+//    -- 定期執行 VACUUM ANALYZE 維護資料庫效能
+//    -- 監控索引使用率，移除未使用的索引
+//    -- 考慮使用連線池（如 PgBouncer）管理資料庫連線

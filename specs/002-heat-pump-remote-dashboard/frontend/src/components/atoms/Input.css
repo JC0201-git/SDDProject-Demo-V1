@@ -1,0 +1,31 @@
+.custom-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  width: 100%;
+}
+
+.custom-input-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.custom-input {
+  transition: all var(--transition-fast);
+}
+
+.custom-input--full-width {
+  width: 100%;
+}
+
+.custom-input--error .ant-input,
+.custom-input--error .ant-input-password {
+  border-color: var(--color-error);
+}
+
+.custom-input-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-error);
+  margin-top: var(--spacing-xs);
+}
